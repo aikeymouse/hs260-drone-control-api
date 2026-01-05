@@ -56,6 +56,7 @@ public class MainActivity extends AppCompatActivity {
     private Button btnDisconnect;
     private TextView tvStatus;
     private TextView tvDebug;
+    private TextView tvVideoIndicator;
     
     private boolean isConnected = false;
     private boolean isFlying = false;
@@ -226,6 +227,10 @@ public class MainActivity extends AppCompatActivity {
         Button btnVideoMonitor = findViewById(R.id.btn_video_monitor);
         tvStatus = findViewById(R.id.tv_status);
         tvDebug = findViewById(R.id.tv_debug);
+        tvVideoIndicator = findViewById(R.id.tv_video_indicator);
+        tvVideoIndicator = findViewById(R.id.tv_video_indicator);
+        tvVideoIndicator = findViewById(R.id.tv_video_indicator);
+        tvVideoIndicator = findViewById(R.id.tv_video_indicator);
 
         btnConnect.setOnClickListener(v -> {
             if (isConnected) {
@@ -745,6 +750,7 @@ public class MainActivity extends AppCompatActivity {
                 logDebug("Waiting for drone to start streaming...");
                 
                 receivingVideo = true;
+                updateVideoIndicator();
                 byte[] videoBuffer = new byte[102400]; // 100KB buffer for video frames
                 int videoPacketCount = 0;
                 int icmpErrorCount = 0;
@@ -931,6 +937,7 @@ public class MainActivity extends AppCompatActivity {
         // Stop all activities
         sendingControl = false;
         receivingVideo = false;
+        updateVideoIndicator();
         isConnected = false;
         staticIsConnected = false;
         isFlying = false;
@@ -987,6 +994,18 @@ public class MainActivity extends AppCompatActivity {
         mainHandler.post(this::updateUI);
         
         logDebug("Disconnect complete - ready to reconnect");
+    }
+
+    private void updateVideoIndicator() {
+        if (tvVideoIndicator != null) {
+            mainHandler.post(() -> {
+                if (receivingVideo) {
+                    tvVideoIndicator.setBackgroundResource(R.drawable.video_indicator_on);
+                } else {
+                    tvVideoIndicator.setBackgroundResource(R.drawable.video_indicator_off);
+                }
+            });
+        }
     }
     
     private void startApiServer() {

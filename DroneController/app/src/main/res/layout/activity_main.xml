@@ -47,16 +47,23 @@
                 android:enabled="false"
                 android:visibility="gone" />
 
-        </LinearLayout>
+            <TextView
+                android:id="@+id/tv_video_indicator"
+                android:layout_width="12dp"
+                android:layout_height="12dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/video_indicator_off" />
 
-        <Button
-            android:id="@+id/btn_video_monitor"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Open Video Monitor"
-            android:textSize="14sp"
-            android:enabled="false" />
+            <Button
+                android:id="@+id/btn_video_monitor"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:text="Video"
+                android:textSize="14sp"
+                android:enabled="false" />
+
+        </LinearLayout>
 
         <Button
             android:id="@+id/btn_takeoff"
