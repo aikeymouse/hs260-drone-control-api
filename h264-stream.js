@@ -444,6 +444,8 @@ function clearLog() {
 
 async function sendCommand(command) {
     try {
+        const takeoffLandBtn = document.getElementById('takeoff-land-btn');
+        
         // Special handling for takeoff: calibrate first
         if (command === 'takeoff') {
             log('📤 Takeoff sequence: Step 1 - Calibrating gyro...', 'info');
@@ -466,6 +468,17 @@ async function sendCommand(command) {
         });
         const result = await response.json();
         log(`📤 Command: ${command} - ${result.status || 'success'}`, result.status === 'success' ? 'info' : 'error');
+        
+        // Toggle button after successful takeoff
+        if (command === 'takeoff' && takeoffLandBtn) {
+            takeoffLandBtn.textContent = '🛬';
+            takeoffLandBtn.setAttribute('data-tooltip', 'Land');
+            takeoffLandBtn.setAttribute('onclick', "sendCommand('land')");
+        } else if (command === 'land' && takeoffLandBtn) {
+            takeoffLandBtn.textContent = '🛫';
+            takeoffLandBtn.setAttribute('data-tooltip', 'Takeoff');
+            takeoffLandBtn.setAttribute('onclick', "sendCommand('takeoff')");
+        }
         
         // Update drone status immediately after command
         setTimeout(updateDroneStatus, 500);

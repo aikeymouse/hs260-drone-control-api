@@ -353,7 +353,7 @@
             <div class="commands-overlay">
                 <h3>COMMANDS</h3>
                 <button class="command-btn" onclick="sendCommand('calibrate')" data-tooltip="Calibrate Gyro">🧭</button>
-                <button class="command-btn" onclick="sendCommand('takeoff')" data-tooltip="Takeoff">🛫</button>
+                <button id="takeoff-land-btn" class="command-btn" onclick="sendCommand('takeoff')" data-tooltip="Takeoff">🛫</button>
             </div>
             
             <!-- Telemetry Recording Panel -->
@@ -393,7 +393,6 @@
         <div class="controls">
             <button onclick="sendCommand('connect')" style="background: linear-gradient(135deg, #00d2ff 0%, #3a7bd5 100%);">🔌 Connect</button>
             <button onclick="sendCommand('disconnect')" style="background: linear-gradient(135deg, #f2709c 0%, #ff9472 100%);">⚡ Disconnect</button>
-            <button onclick="sendCommand('land')" style="background: linear-gradient(135deg, #fc4a1a 0%, #f7b733 100%);">🛬 Land</button>
             <button onclick="reconnect()">🔄 Reconnect Stream</button>
             <button onclick="clearLog()">🗑️ Clear Log</button>
         </div>
