@@ -117,8 +117,8 @@ public class MainActivity extends AppCompatActivity {
                 lastFrameTime = now;
             }
             
-            // Forward to WebSocket clients (this is filtered by native library - missing SPS/PPS)
-            if (apiServer != null && frameData != null && frameData.length > 0) {
+            // Forward to WebSocket clients ONLY when connected to drone
+            if (isConnected && apiServer != null && frameData != null && frameData.length > 0) {
                 apiServer.sendH264Packet(frameData);
                 if (frameCount == 1) {
                     logDebug("First H.264 frame forwarded to WebSocket: " + frameData.length + " bytes");
@@ -782,8 +782,8 @@ public class MainActivity extends AppCompatActivity {
                             logDebug("FORWARDING CHECK: apiServer=" + (apiServer != null) + ", length=" + length);
                         }
                         
-                        // Also forward RAW packets to WebSocket (contains SPS/PPS!)
-                        if (apiServer != null && length > 0) {
+                        // Also forward RAW packets to WebSocket (contains SPS/PPS!) - ONLY when connected
+                        if (isConnected && apiServer != null && length > 0) {
                             byte[] packet = new byte[length];
                             System.arraycopy(videoBuffer, 0, packet, 0, length);
                             apiServer.sendH264Packet(packet);
@@ -793,7 +793,7 @@ public class MainActivity extends AppCompatActivity {
                                 logDebug("First video packet forwarded to WebSocket: " + length + " bytes");
                             }
                         } else if (videoPacketCount == 1) {
-                            logDebug("FORWARDING SKIPPED: apiServer=" + (apiServer != null) + ", length=" + length);
+                            logDebug("FORWARDING SKIPPED: isConnected=" + isConnected + ", apiServer=" + (apiServer != null) + ", length=" + length);
                         }
                         
                         // Log every 2 seconds
