@@ -57,6 +57,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView tvStatus;
     private TextView tvDebug;
     private TextView tvVideoIndicator;
+    private android.widget.ScrollView scrollDebug;
     
     private boolean isConnected = false;
     private boolean isFlying = false;
@@ -228,6 +229,7 @@ public class MainActivity extends AppCompatActivity {
         tvStatus = findViewById(R.id.tv_status);
         tvDebug = findViewById(R.id.tv_debug);
         tvVideoIndicator = findViewById(R.id.tv_video_indicator);
+        scrollDebug = findViewById(R.id.scroll_debug);
         tvVideoIndicator = findViewById(R.id.tv_video_indicator);
         tvVideoIndicator = findViewById(R.id.tv_video_indicator);
         tvVideoIndicator = findViewById(R.id.tv_video_indicator);
@@ -894,13 +896,16 @@ public class MainActivity extends AppCompatActivity {
             String current = tvDebug.getText().toString();
             String[] lines = current.split("\n");
             StringBuilder sb = new StringBuilder();
-            // Keep last 10 lines
-            int start = Math.max(0, lines.length - 9);
+            // Keep last 50 lines
+            int start = Math.max(0, lines.length - 49);
             for (int i = start; i < lines.length; i++) {
                 sb.append(lines[i]).append("\n");
             }
             sb.append(message);
             tvDebug.setText(sb.toString());
+            
+            // Auto-scroll to bottom
+            scrollDebug.post(() -> scrollDebug.fullScroll(android.view.View.FOCUS_DOWN));
         });
     }
 

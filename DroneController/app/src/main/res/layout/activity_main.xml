@@ -8,7 +8,8 @@
     <!-- Control panel -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:orientation="vertical">
 
         <!-- Status and Connect/Disconnect row -->
@@ -86,17 +87,19 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
+            android:layout_marginTop="8dp"
             android:text="Debug Log:"
             android:textStyle="bold" />
 
         <ScrollView
+            android:id="@+id/scroll_debug"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="4dp"
             android:background="#F5F5F5"
-            android:padding="8dp">
+            android:padding="8dp"
+            android:fillViewport="false">
 
             <TextView
                 android:id="@+id/tv_debug"
@@ -104,7 +107,8 @@
                 android:layout_height="wrap_content"
                 android:text="Ready..."
                 android:textSize="12sp"
-                android:fontFamily="monospace" />
+                android:fontFamily="monospace"
+                android:scrollbars="vertical" />
         </ScrollView>
 
     </LinearLayout>
