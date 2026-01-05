@@ -11,32 +11,43 @@
         android:layout_height="match_parent"
         android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/tv_status"
+        <!-- Status and Connect/Disconnect row -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Disconnected"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:padding="8dp"
-            android:background="#EEEEEE" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
 
-        <Button
-            android:id="@+id/btn_connect"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="Connect to Drone"
-            android:textSize="16sp" />
+            <TextView
+                android:id="@+id/tv_status"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Disconnected"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:padding="8dp"
+                android:background="#EEEEEE" />
 
-        <Button
-            android:id="@+id/btn_disconnect"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Disconnect"
-            android:textSize="16sp"
-            android:enabled="false" />
+            <Button
+                android:id="@+id/btn_connect"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="Connect"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/btn_disconnect"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:text="Disconnect"
+                android:textSize="14sp"
+                android:enabled="false"
+                android:visibility="gone" />
+
+        </LinearLayout>
 
         <Button
             android:id="@+id/btn_video_monitor"
