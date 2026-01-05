@@ -33,6 +33,10 @@ public class VideoDecoder {
     private boolean configuredWithCSD = false; // Track if we've configured with codec-specific data
     private FrameCallback frameCallback;
     private int callbackFrameInterval = 1; // Call callback every N frames (1 = every frame)
+    private byte[] spsData = null;
+    private byte[] ppsData = null;
+    private java.util.List<byte[]> bufferedFrames = new java.util.ArrayList<>();
+    private boolean decoderStarted = false;
     
     public interface FrameCallback {
         void onFrameDecoded(Bitmap frame);
@@ -48,23 +52,67 @@ public class VideoDecoder {
     }
     
     /**
-     * Initialize the MediaCodec decoder
+     * Initialize the MediaCodec decoder - now waits for SPS/PPS before actually starting
      */
     public boolean start() {
+        // Just set isRunning to true - actual decoder will be started when we get SPS/PPS
+        isRunning = true;
+        Log.d(TAG, "VideoDecoder ready, waiting for SPS/PPS");
+        return true;
+    }
+    
+    /**
+     * Actually start the MediaCodec with SPS/PPS configuration
+     */
+    private boolean startMediaCodec() {
         try {
             // Create MediaCodec decoder for H.264
             decoder = MediaCodec.createDecoderByType(MIME_TYPE);
             
-            // Configure decoder
+            // Configure decoder with SPS/PPS
             MediaFormat format = MediaFormat.createVideoFormat(MIME_TYPE, WIDTH, HEIGHT);
+            
+            if (spsData != null && ppsData != null) {
+                // Add NAL headers if missing
+                byte[] spsWithHeader = spsData;
+                byte[] ppsWithHeader = ppsData;
+                
+                if (spsData.length > 0 && spsData[0] != 0x00) {
+                    spsWithHeader = new byte[spsData.length + 4];
+                    spsWithHeader[0] = 0x00;
+                    spsWithHeader[1] = 0x00;
+                    spsWithHeader[2] = 0x00;
+                    spsWithHeader[3] = 0x01;
+                    System.arraycopy(spsData, 0, spsWithHeader, 4, spsData.length);
+                }
+                
+                if (ppsData.length > 0 && ppsData[0] != 0x00) {
+                    ppsWithHeader = new byte[ppsData.length + 4];
+                    ppsWithHeader[0] = 0x00;
+                    ppsWithHeader[1] = 0x00;
+                    ppsWithHeader[2] = 0x00;
+                    ppsWithHeader[3] = 0x01;
+                    System.arraycopy(ppsData, 0, ppsWithHeader, 4, ppsData.length);
+                }
+                
+                // Combine SPS and PPS into CSD-0
+                ByteBuffer csd0 = ByteBuffer.allocate(spsWithHeader.length + ppsWithHeader.length);
+                csd0.put(spsWithHeader);
+                csd0.put(ppsWithHeader);
+                csd0.flip();
+                format.setByteBuffer("csd-0", csd0);
+                Log.d(TAG, "Configured MediaCodec with SPS/PPS (added NAL headers if missing)");
+            }
+            
             decoder.configure(format, surface, null, 0);
             decoder.start();
             
-            isRunning = true;
-            Log.d(TAG, "MediaCodec decoder started successfully");
+            decoderStarted = true;
+            configuredWithCSD = true;
+            Log.d(TAG, "MediaCodec decoder started successfully with SPS/PPS");
             return true;
-        } catch (IOException e) {
-            Log.e(TAG, "Failed to create MediaCodec decoder", e);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to start MediaCodec decoder", e);
             return false;
         }
     }
@@ -74,27 +122,99 @@ public class VideoDecoder {
      * @param data Compressed H.264 data
      */
     public synchronized void decode(byte[] data) {
-        if (!isRunning || decoder == null || data == null || data.length == 0) {
+        if (!isRunning || data == null || data.length == 0) {
             return;
         }
         
         try {
-            // Double-check decoder is still valid before using it
-            // (isRunning might be true while stop() is being called from another thread)
-            if (decoder == null) {
+            // Check for SPS/PPS NAL units
+            // Frames can come with or without NAL header (00 00 00 01)
+            // NAL type is in first byte (with header) or data[4] (without header)
+            if (!decoderStarted && data.length > 0) {
+                int nalType;
+                int nalStart;
+                
+                // Check if frame has NAL header (00 00 00 01)
+                if (data.length > 4 && data[0] == 0x00 && data[1] == 0x00 && data[2] == 0x00 && data[3] == 0x01) {
+                    nalType = data[4] & 0x1F;
+                    nalStart = 0; // Include header
+                } else {
+                    // No NAL header, type is in first byte
+                    nalType = data[0] & 0x1F;
+                    nalStart = 0;
+                }
+                
+                if (nalType == 7) { // SPS
+                    spsData = data.clone();
+                    Log.d(TAG, "Found SPS NAL unit, size: " + data.length + ", type byte: 0x" + String.format("%02X", data[0] & 0xFF));
+                    
+                    // If we have both SPS and PPS, start the decoder
+                    if (ppsData != null) {
+                        if (startMediaCodec()) {
+                            // Process buffered frames
+                            Log.d(TAG, "Processing " + bufferedFrames.size() + " buffered frames");
+                            for (byte[] frame : bufferedFrames) {
+                                decodeFrame(frame);
+                            }
+                            bufferedFrames.clear();
+                        }
+                    }
+                    return; // Don't process SPS as a regular frame
+                } else if (nalType == 8) { // PPS
+                    ppsData = data.clone();
+                    Log.d(TAG, "Found PPS NAL unit, size: " + data.length + ", type byte: 0x" + String.format("%02X", data[0] & 0xFF));
+                    
+                    // If we have both SPS and PPS, start the decoder
+                    if (spsData != null) {
+                        if (startMediaCodec()) {
+                            // Process buffered frames
+                            Log.d(TAG, "Processing " + bufferedFrames.size() + " buffered frames");
+                            for (byte[] frame : bufferedFrames) {
+                                decodeFrame(frame);
+                            }
+                            bufferedFrames.clear();
+                        }
+                    }
+                    return; // Don't process PPS as a regular frame
+                }
+            }
+            
+            // If decoder not started yet, buffer the frame
+            if (!decoderStarted) {
+                if (bufferedFrames.size() < 30) { // Limit buffer size
+                    bufferedFrames.add(data.clone());
+                }
                 return;
             }
             
-            // Check for SPS/PPS NAL units (0x00 0x00 0x00 0x01 0x67 for SPS, 0x68 for PPS)
-            // These are needed for MediaCodec initialization but might come in the stream
-            if (!configuredWithCSD && data.length > 4) {
-                if (data[0] == 0x00 && data[1] == 0x00 && data[2] == 0x00 && data[3] == 0x01) {
-                    int nalType = data[4] & 0x1F;
-                    if (nalType == 7 || nalType == 8) { // SPS (7) or PPS (8)
-                        Log.d(TAG, "Found SPS/PPS NAL unit, type: " + nalType);
-                        configuredWithCSD = true;
-                    }
-                }
+            // Decoder is ready, process the frame
+            decodeFrame(data);
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Error decoding frame", e);
+        }
+    }
+    
+    /**
+     * Actually decode a frame (decoder must be started)
+     */
+    private void decodeFrame(byte[] data) {
+        if (decoder == null) {
+            return;
+        }
+        
+        try {
+            // Check if data needs NAL header (00 00 00 01)
+            // If first byte is NAL type byte (not 00), add header
+            byte[] frameData = data;
+            if (data.length > 0 && data[0] != 0x00) {
+                // Add NAL header
+                frameData = new byte[data.length + 4];
+                frameData[0] = 0x00;
+                frameData[1] = 0x00;
+                frameData[2] = 0x00;
+                frameData[3] = 0x01;
+                System.arraycopy(data, 0, frameData, 4, data.length);
             }
             
             // Get input buffer
@@ -103,19 +223,10 @@ public class VideoDecoder {
                 ByteBuffer inputBuffer = decoder.getInputBuffer(inputBufferIndex);
                 if (inputBuffer != null) {
                     inputBuffer.clear();
-                    inputBuffer.put(data);
+                    inputBuffer.put(frameData);
                     
-                    // Mark as codec config if it's SPS/PPS
-                    int flags = 0;
-                    if (!configuredWithCSD && data.length > 4 && data[0] == 0x00 && data[1] == 0x00) {
-                        int nalType = data[4] & 0x1F;
-                        if (nalType == 7 || nalType == 8) {
-                            flags = MediaCodec.BUFFER_FLAG_CODEC_CONFIG;
-                        }
-                    }
-                    
-                    decoder.queueInputBuffer(inputBufferIndex, 0, data.length,
-                            System.nanoTime() / 1000, flags);
+                    decoder.queueInputBuffer(inputBufferIndex, 0, frameData.length,
+                            System.nanoTime() / 1000, 0);
                 }
             } else {
                 if (frameCount == 0) {
@@ -183,6 +294,11 @@ public class VideoDecoder {
      */
     public synchronized void stop() {
         isRunning = false;
+        decoderStarted = false;
+        spsData = null;
+        ppsData = null;
+        bufferedFrames.clear();
+        
         if (decoder != null) {
             try {
                 decoder.stop();

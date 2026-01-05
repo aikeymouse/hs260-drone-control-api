@@ -50,7 +50,6 @@ public class MainActivity extends AppCompatActivity {
     private Thread videoThread;
     private boolean receivingVideo = false;
     
-    private SurfaceView videoView;
     private Button btnTakeoff;
     private Button btnLand;
     private Button btnConnect;
@@ -71,17 +70,18 @@ public class MainActivity extends AppCompatActivity {
     private boolean altitudeHold = false;
     private FlyReceiveInfo lastTelemetry = new FlyReceiveInfo();
     
-    // Video surface for hardware rendering
-    private SurfaceHolder surfaceHolder;
-    private VideoDecoder videoDecoder;
-    private boolean surfaceReady = false;  // Track if surface is ready for use
-    
     // Debug API server for remote control via ADB
     private DebugApiServer apiServer;
     
     // Flight control using native library
     private FlySendInfo flySendInfo;
     private Object packetLock = new Object();
+    
+    // Static method to check connection status from other activities
+    private static boolean staticIsConnected = false;
+    public static boolean isConnectedToDrone() {
+        return staticIsConnected;
+    }
     
     // Video frame statistics
     private int frameCount = 0;
@@ -90,12 +90,34 @@ public class MainActivity extends AppCompatActivity {
     // Native video library initialization flag
     private boolean nativeVideoInitialized = false;
     
-    // Video frame listener - receives decoded YUV frames from native library
+    // Static video listener for VideoActivity to register itself
+    private static c activeVideoListener = null;
+    
+    // Cache SPS/PPS for new video listeners
+    private static byte[] cachedSPS = null;
+    private static byte[] cachedPPS = null;
+    
+    public static void setVideoListener(c listener) {
+        activeVideoListener = listener;
+        
+        // If we have cached SPS/PPS, send them to the new listener immediately
+        if (listener != null && cachedSPS != null && cachedPPS != null) {
+            Log.d(TAG, "Sending cached SPS/PPS to new listener");
+            listener.b(cachedSPS);
+            listener.b(cachedPPS);
+        }
+    }
+    
+    // Video frame listener - receives frames and broadcasts to WebSocket and VideoActivity
     private c videoFrameListener = new c() {
         @Override
         public void A(int result) {
             // Play result callback
             logDebug("Video decoder result: " + result);
+            // Forward to VideoActivity
+            if (activeVideoListener != null) {
+                activeVideoListener.A(result);
+            }
         }
 
         @Override
@@ -111,7 +133,7 @@ public class MainActivity extends AppCompatActivity {
             frameCount++;
             long now = System.currentTimeMillis();
             
-            // Log NAL type on first few frames
+            // Log NAL type on first few frames and cache SPS/PPS
             if (frameCount <= 5 && frameData != null && frameData.length > 0) {
                 int nalType = frameData[0] & 0x1F;  // Extract NAL unit type from first byte
                 StringBuilder hex = new StringBuilder("Frame " + frameCount + " (NAL type=" + nalType + ", " + frameData.length + " bytes): ");
@@ -119,6 +141,15 @@ public class MainActivity extends AppCompatActivity {
                     hex.append(String.format("%02X ", frameData[i] & 0xFF));
                 }
                 logDebug(hex.toString());
+                
+                // Cache SPS/PPS for late-joining VideoActivity
+                if (nalType == 7) { // SPS
+                    cachedSPS = frameData.clone();
+                    logDebug("Cached SPS in MainActivity");
+                } else if (nalType == 8) { // PPS
+                    cachedPPS = frameData.clone();
+                    logDebug("Cached PPS in MainActivity");
+                }
             }
             
             if (frameCount % 30 == 0) {  // Log every 30 frames
@@ -128,7 +159,8 @@ public class MainActivity extends AppCompatActivity {
                 lastFrameTime = now;
             }
             
-            // Forward to WebSocket clients ONLY when connected to drone
+            // Forward to WebSocket clients when connected to drone
+            // This allows browser streaming to work regardless of VideoActivity state
             if (isConnected && apiServer != null && frameData != null && frameData.length > 0) {
                 apiServer.sendH264Packet(frameData);
                 if (frameCount == 1) {
@@ -136,26 +168,35 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
             
-            // Decode H.264 packet and render to surface
-            if (videoDecoder != null && videoDecoder.isRunning()) {
-                videoDecoder.decode(frameData);
+            // Also forward to VideoActivity if it's active
+            if (activeVideoListener != null) {
+                activeVideoListener.b(frameData);
             }
         }
 
         @Override
         public void h(boolean z, boolean z2, int[] iArr) {
             // Configuration callback
+            if (activeVideoListener != null) {
+                activeVideoListener.h(z, z2, iArr);
+            }
         }
 
         @Override
         public void q(int i) {
             // Quality callback
+            if (activeVideoListener != null) {
+                activeVideoListener.q(i);
+            }
         }
 
         @Override
         public void w(int networkType) {
             // Network type callback
             logDebug("Network type changed: " + networkType);
+            if (activeVideoListener != null) {
+                activeVideoListener.w(networkType);
+            }
         }
 
         @Override
@@ -164,6 +205,9 @@ public class MainActivity extends AppCompatActivity {
             // We don't need to process this manually, just log for debugging
             if (width > 0 && height > 0) {
                 logDebug(String.format("Video resolution: %dx%d", width, height));
+            }
+            if (activeVideoListener != null) {
+                activeVideoListener.y(width, height, yuvData);
             }
         }
     };
@@ -175,46 +219,13 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        videoView = findViewById(R.id.video_view);
         btnTakeoff = findViewById(R.id.btn_takeoff);
         btnLand = findViewById(R.id.btn_land);
         btnConnect = findViewById(R.id.btn_connect);
         btnDisconnect = findViewById(R.id.btn_disconnect);
+        Button btnVideoMonitor = findViewById(R.id.btn_video_monitor);
         tvStatus = findViewById(R.id.tv_status);
         tvDebug = findViewById(R.id.tv_debug);
-
-        // Initialize video surface and video decoder
-        surfaceHolder = videoView.getHolder();
-        videoView.setZOrderOnTop(false); // Ensure video is rendered below UI
-        videoView.setZOrderMediaOverlay(false); // Don't overlay on media
-        surfaceHolder.setFormat(android.graphics.PixelFormat.OPAQUE);  // MediaCodec requires opaque surface
-        
-        surfaceHolder.addCallback(new SurfaceHolder.Callback() {
-            @Override
-            public void surfaceCreated(SurfaceHolder holder) {
-                logDebug("Surface created");
-                // Update surfaceHolder reference when surface is created
-                surfaceHolder = holder;
-                surfaceReady = true;
-                // Don't create decoder here - it will be created when connecting to drone
-                // This prevents having a decoder that's not receiving frames
-            }
-
-            @Override
-            public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-                logDebug(String.format("Surface changed: %dx%d", width, height));
-                // Update surfaceHolder reference
-                surfaceHolder = holder;
-            }
-
-            @Override
-            public void surfaceDestroyed(SurfaceHolder holder) {
-                logDebug("Surface destroyed");
-                surfaceReady = false;
-                // Don't stop decoder here - it will be recreated when surface is recreated
-                // Stopping it here causes IllegalStateException when frames arrive after destroy
-            }
-        });
 
         btnConnect.setOnClickListener(v -> {
             if (isConnected) {
@@ -225,6 +236,11 @@ public class MainActivity extends AppCompatActivity {
         });
         btnTakeoff.setOnClickListener(v -> sendTakeoff());
         btnLand.setOnClickListener(v -> sendLand());
+        
+        btnVideoMonitor.setOnClickListener(v -> {
+            android.content.Intent intent = new android.content.Intent(MainActivity.this, VideoActivity.class);
+            startActivity(intent);
+        });
 
         // Initialize FlySendInfo with neutral values
         initializeFlySendInfo();
@@ -370,6 +386,7 @@ public class MainActivity extends AppCompatActivity {
                 initializeFlySendInfo();
                 
                 isConnected = true;
+                staticIsConnected = true;
                 updateStatus("Connected! Sending keep-alive...");
                 logDebug("===== CONNECTION ESTABLISHED =====");
                 logDebug("UDP Target: " + DRONE_IP + ":" + CONTROL_PORT);
@@ -377,13 +394,6 @@ public class MainActivity extends AppCompatActivity {
                 logDebug("Packet Size: " + PACKET_SIZE + " bytes");
                 logDebug("Send Rate: " + CONTROL_RATE_MS + "ms (" + (1000/CONTROL_RATE_MS) + "Hz)");
                 logDebug("Using NATIVE LIBRARY for packet encoding!");
-                
-                // Recreate video decoder for each connection (ensures clean state)
-                if (videoDecoder != null) {
-                    logDebug("Stopping existing video decoder before reconnection");
-                    videoDecoder.stop();
-                    videoDecoder = null;
-                }
                 
                 // Initialize native video library ONCE (not on every reconnect)
                 // Mode 1 for platform 4 (HS260 with A9-720P), Mode 0 for others
@@ -396,62 +406,11 @@ public class MainActivity extends AppCompatActivity {
                     logDebug("Native video library already initialized, skipping liveInit");
                 }
                 
-                // Create and start video decoder BEFORE registering listener
-                // Wait for surface to be ready
-                if (!surfaceReady) {
-                    logDebug("Waiting for surface to be ready...");
-                    int waitCount = 0;
-                    while (!surfaceReady && waitCount < 50) {
-                        try { Thread.sleep(100); } catch (InterruptedException e) {}
-                        waitCount++;
-                    }
-                    if (!surfaceReady) {
-                        logDebug("ERROR: Surface not ready after 5 seconds!");
-                    }
-                }
+                // Register video frame listener for WebSocket streaming
+                // VideoActivity will handle its own separate decoder for local display
+                SDLActivity.setLiveListener(videoFrameListener);
+                logDebug("Video frame listener registered for WebSocket streaming");
                 
-                if (surfaceReady && surfaceHolder != null && surfaceHolder.getSurface() != null && surfaceHolder.getSurface().isValid()) {
-                    logDebug("Creating video decoder for connection");
-                    logDebug("Surface: " + surfaceHolder.getSurface() + ", valid=" + surfaceHolder.getSurface().isValid());
-                    videoDecoder = new VideoDecoder(surfaceHolder.getSurface());
-                    
-                    // Set frame callback for MJPEG streaming
-                    if (apiServer != null) {
-                        videoDecoder.setFrameCallback(new VideoDecoder.FrameCallback() {
-                            int framesSent = 0;
-                            @Override
-                            public void onFrameDecoded(android.graphics.Bitmap frame) {
-                                apiServer.sendFrame(frame);
-                                framesSent++;
-                                if (framesSent % 100 == 0) {
-                                    logDebug("MJPEG: Sent " + framesSent + " decoded frames");
-                                }
-                            }
-                        }, 2); // Send every 2nd frame (~15 FPS)
-                    }
-                    
-                    if (!videoDecoder.start()) {
-                        logDebug("ERROR: Failed to start video decoder");
-                        videoDecoder = null;
-                    } else {
-                        logDebug("Video decoder started successfully");
-                        // Force video view to be visible and request layout
-                        mainHandler.post(() -> {
-                            videoView.setVisibility(View.VISIBLE);
-                            videoView.bringToFront();
-                            videoView.requestLayout();
-                            videoView.invalidate();
-                            // Force surface to recreate by setting Z order
-                            videoView.setZOrderOnTop(false);
-                            logDebug("Video view refreshed and brought to front");
-                        });
-                        // Register listener ONLY after decoder is successfully started
-                        SDLActivity.setLiveListener(videoFrameListener);
-                        logDebug("Video frame listener registered");
-                    }
-                } else {
-                    logDebug("ERROR: Cannot create video decoder - invalid surface");
-                }                
                 mainHandler.post(this::updateUI);
                 
                 // CRITICAL: Establish TCP connection FIRST (drone requires this before video!)
@@ -958,6 +917,12 @@ public class MainActivity extends AppCompatActivity {
         btnDisconnect.setVisibility(View.GONE);
         btnTakeoff.setEnabled(isConnected && !isFlying);
         btnLand.setEnabled(isConnected && isFlying);
+        
+        // Enable video monitor button when connected
+        Button btnVideoMonitor = findViewById(R.id.btn_video_monitor);
+        if (btnVideoMonitor != null) {
+            btnVideoMonitor.setEnabled(isConnected);
+        }
     }
     
     private void disconnect() {
@@ -967,20 +932,18 @@ public class MainActivity extends AppCompatActivity {
         sendingControl = false;
         receivingVideo = false;
         isConnected = false;
+        staticIsConnected = false;
         isFlying = false;
         tcpHandshakeComplete = false;
         
-        // Unregister video listener FIRST to stop native callbacks
+        // Clear cached SPS/PPS
+        cachedSPS = null;
+        cachedPPS = null;
+        
+        // Unregister video listener to stop native callbacks
+        // VideoActivity manages its own decoder lifecycle
         SDLActivity.setLiveListener(null);
         logDebug("Native video listener unregistered");
-        
-        // Stop video decoder - set to null FIRST to prevent decode() calls during stop()
-        VideoDecoder decoderToStop = videoDecoder;
-        videoDecoder = null;  // Null it FIRST so callbacks won't try to use it
-        if (decoderToStop != null) {
-            decoderToStop.stop();
-            logDebug("Video decoder stopped");
-        }
         
         // Close all sockets
         try {
@@ -1058,7 +1021,6 @@ public class MainActivity extends AppCompatActivity {
                     status.put("receivingVideo", receivingVideo);
                     status.put("tcpHandshakeComplete", tcpHandshakeComplete);
                     status.put("frameCount", frameCount);
-                    status.put("videoDecoderRunning", videoDecoder != null && videoDecoder.isRunning());
                     
                     // Telemetry data
                     status.put("battery", batteryLevel);
@@ -1081,22 +1043,9 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public android.graphics.Bitmap getLatestFrame() {
-                // Get bitmap from SurfaceView
-                if (videoView == null) {
-                    return null;
-                }
-                try {
-                    android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(
-                        videoView.getWidth(), 
-                        videoView.getHeight(), 
-                        android.graphics.Bitmap.Config.ARGB_8888
-                    );
-                    android.graphics.Canvas canvas = new android.graphics.Canvas(bitmap);
-                    videoView.draw(canvas);
-                    return bitmap;
-                } catch (Exception e) {
-                    return null;
-                }
+                // Video rendering is now handled by VideoActivity
+                // This method is not used since we stream H.264 directly via WebSocket
+                return null;
             }
 
             @Override
