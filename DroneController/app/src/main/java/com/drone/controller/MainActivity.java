@@ -26,6 +26,7 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import com.google.gson.Gson;
 import org.libsdl.app.FlySendInfo;
+import org.libsdl.app.FlyReceiveInfo;
 import org.libsdl.app.SDLActivity;
 import com.h8.p.c;  // LiveListener interface for video frames
 import java.io.*;
@@ -62,6 +63,13 @@ public class MainActivity extends AppCompatActivity {
     private boolean sendingControl = false;
     private boolean tcpHandshakeComplete = false;  // Track TCP handshake completion
     private Handler mainHandler = new Handler(Looper.getMainLooper());
+    
+    // Telemetry data
+    private int batteryLevel = 0;
+    private int altitude = 0;
+    private boolean motorRunning = false;
+    private boolean altitudeHold = false;
+    private FlyReceiveInfo lastTelemetry = new FlyReceiveInfo();
     
     // Video surface for hardware rendering
     private SurfaceHolder surfaceHolder;
@@ -491,6 +499,7 @@ public class MainActivity extends AppCompatActivity {
                 
                 byte[] receiveBuffer = new byte[1024];
                 DatagramPacket receivePacket = new DatagramPacket(receiveBuffer, receiveBuffer.length);
+                int packetCount = 0;
                 
                 while (isConnected) {
                     try {
@@ -498,11 +507,26 @@ public class MainActivity extends AppCompatActivity {
                         int length = receivePacket.getLength();
                         
                         if (length > 0) {
-                            StringBuilder hex = new StringBuilder("Telemetry received (" + length + " bytes): ");
-                            for (int i = 0; i < length; i++) {
-                                hex.append(String.format("%02X ", receiveBuffer[i] & 0xFF));
+                            // Parse telemetry using native method
+                            SDLActivity.nativeGetFlyReceiveData(lastTelemetry, receiveBuffer, length);
+                            
+                            // Extract key values
+                            batteryLevel = lastTelemetry.getBatVal();
+                            altitude = lastTelemetry.getHeight6();
+                            motorRunning = lastTelemetry.getMotorRunning() == 1;
+                            altitudeHold = lastTelemetry.getAltHold() == 1;
+                            
+                            // Debug log every 50 packets
+                            if (packetCount++ % 50 == 0) {
+                                logDebug("Telemetry: Battery=" + batteryLevel + 
+                                       "%, Height=" + altitude + 
+                                       ", Motors=" + (motorRunning ? "ON" : "OFF") +
+                                       ", AltHold=" + (altitudeHold ? "ON" : "OFF") +
+                                       ", Landed=" + (lastTelemetry.getLanded() == 1) +
+                                       ", TakeOff=" + (lastTelemetry.getTakeOff() == 1) +
+                                       ", Headless=" + (lastTelemetry.getHeadless() == 1) +
+                                       ", Gale=" + (lastTelemetry.getGale() == 1));
                             }
-                            logDebug(hex.toString());
                         }
                     } catch (SocketTimeoutException e) {
                         // Normal timeout, continue
@@ -989,6 +1013,20 @@ public class MainActivity extends AppCompatActivity {
                     status.put("tcpHandshakeComplete", tcpHandshakeComplete);
                     status.put("frameCount", frameCount);
                     status.put("videoDecoderRunning", videoDecoder != null && videoDecoder.isRunning());
+                    
+                    // Telemetry data
+                    status.put("battery", batteryLevel);
+                    status.put("altitude", altitude);
+                    status.put("motorRunning", motorRunning);
+                    status.put("altitudeHold", altitudeHold);
+                    status.put("landed", lastTelemetry.getLanded() == 1);
+                    status.put("takeOff", lastTelemetry.getTakeOff() == 1);
+                    status.put("headless", lastTelemetry.getHeadless() == 1);
+                    status.put("calibrate", lastTelemetry.getCalibrate() == 1);
+                    status.put("galeWarning", lastTelemetry.getGale() == 1);
+                    status.put("currentOver", lastTelemetry.getCurrOver() == 1);
+                    status.put("followMode", lastTelemetry.getFollow() == 1);
+                    
                     return status.toString();
                 } catch (Exception e) {
                     return "{\"error\":\"" + e.getMessage() + "\"}";

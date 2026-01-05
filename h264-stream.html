@@ -139,6 +139,18 @@
                     <div class="stat-value" id="altitude">--</div>
                 </div>
                 <div class="stat-item">
+                    <div class="stat-label">Motors</div>
+                    <div class="stat-value" id="motors">--</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Flight Mode</div>
+                    <div class="stat-value" id="flightMode">--</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Warnings</div>
+                    <div class="stat-value" id="warnings">--</div>
+                </div>
+                <div class="stat-item">
                     <div class="stat-label">Packets Received</div>
                     <div class="stat-value" id="packets">0</div>
                 </div>
@@ -598,12 +610,34 @@
                 const response = await fetch('http://localhost:9000/api/status');
                 const status = await response.json();
                 
-                // Update telemetry display
+                // Update basic status
                 document.getElementById('droneStatus').textContent = status.connected ? 
                     (status.flying ? '✈️ Flying' : '🛬 Landed') : '⚠️ Disconnected';
                 
+                // Battery
                 document.getElementById('battery').textContent = status.battery ? status.battery + '%' : '--';
+                
+                // Altitude
                 document.getElementById('altitude').textContent = status.altitude ? status.altitude + 'm' : '--';
+                
+                // Motors
+                document.getElementById('motors').textContent = status.motorRunning ? '🔄 ON' : '⏸️ OFF';
+                
+                // Flight mode
+                let modes = [];
+                if (status.altitudeHold) modes.push('Alt Hold');
+                if (status.headless) modes.push('Headless');
+                if (status.followMode) modes.push('Follow');
+                if (status.takeOff) modes.push('Takeoff');
+                if (status.landed) modes.push('Landed');
+                document.getElementById('flightMode').textContent = modes.length > 0 ? modes.join(', ') : 'Normal';
+                
+                // Warnings
+                let warnings = [];
+                if (status.galeWarning) warnings.push('⚠️ Wind');
+                if (status.currentOver) warnings.push('⚠️ Current');
+                if (status.calibrate) warnings.push('🔧 Calibrating');
+                document.getElementById('warnings').textContent = warnings.length > 0 ? warnings.join(' ') : '✅ OK';
                 
             } catch (e) {
                 // Silently fail - likely not connected yet
