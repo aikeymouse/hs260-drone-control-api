@@ -1131,6 +1131,39 @@ public class MainActivity extends AppCompatActivity {
                     }
                 });
             }
+
+            @Override
+            public void onCalibrate() {
+                mainHandler.post(() -> {
+                    // Check if drone is safe to calibrate (motors off and on ground)
+                    boolean motorsOff = lastTelemetry.getMotorRunning() == 0;
+                    int altitude = lastTelemetry.getHeight6();
+                    
+                    if (!motorsOff || altitude > 5) {
+                        logDebug("CALIBRATE: ERROR - Drone must be on ground with motors off (motors=" + 
+                                (motorsOff ? "OFF" : "ON") + ", altitude=" + altitude + ")");
+                        return;
+                    }
+                    
+                    logDebug("CALIBRATE: Triggering gyro calibration...");
+                    
+                    // Step 1: Set gyroAdjust to 1 (trigger calibration)
+                    synchronized (packetLock) {
+                        flySendInfo.setGyroAdjust(1);
+                    }
+                    
+                    // Step 2: Reset gyroAdjust to 0 after 100ms (one-shot pulse)
+                    mainHandler.postDelayed(() -> {
+                        synchronized (packetLock) {
+                            flySendInfo.setGyroAdjust(0);
+                        }
+                        logDebug("CALIBRATE: Reset gyroAdjust to 0 (pulse complete)");
+                    }, 100);
+                    
+                    // Step 3: Monitor calibration status
+                    monitorCalibrationStatus();
+                });
+            }
         });
         apiServer.start();
         
@@ -1140,6 +1173,38 @@ public class MainActivity extends AppCompatActivity {
         logDebug("Debug API server started on port 9000");
         logDebug("Run: adb forward tcp:9000 tcp:9000");
         logDebug("Then open: http://localhost:9000");
+    }
+
+    private void monitorCalibrationStatus() {
+        new Thread(() -> {
+            long startTime = System.currentTimeMillis();
+            int lastCalibrate = -1;
+            
+            while (System.currentTimeMillis() - startTime < 10000) {  // 10 second timeout
+                int currentCalibrate = lastTelemetry.getCalibrate();
+                
+                if (currentCalibrate != lastCalibrate) {
+                    lastCalibrate = currentCalibrate;
+                    
+                    if (currentCalibrate == 1) {
+                        logDebug("CALIBRATE: Drone is calibrating... (calibrate=1)");
+                    } else if (currentCalibrate == 0) {
+                        logDebug("CALIBRATE: Calibration complete! (calibrate=0)");
+                        break;
+                    }
+                }
+                
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    break;
+                }
+            }
+            
+            if (System.currentTimeMillis() - startTime >= 10000) {
+                logDebug("CALIBRATE: Timeout waiting for calibration to complete");
+            }
+        }).start();
     }
 
     @Override

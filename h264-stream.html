@@ -109,6 +109,59 @@
         .telemetry-icon {
             font-size: 1.2em;
         }
+        .commands-overlay {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            border-radius: 8px;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .commands-overlay h3 {
+            margin: 0 0 8px 0;
+            font-size: 0.85em;
+            color: #aaa;
+            text-align: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            padding-bottom: 6px;
+        }
+        .command-btn {
+            width: 48px;
+            height: 48px;
+            padding: 0;
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            border-radius: 8px;
+            cursor: pointer;
+            background: rgba(156, 39, 176, 0.4) !important;
+            border: 1px solid rgba(186, 104, 200, 0.5);
+        }
+        .command-btn:hover {
+            background: rgba(156, 39, 176, 0.6) !important;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(156, 39, 176, 0.4);
+        }
+        .command-btn:hover::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            right: 60px;
+            background: rgba(0, 0, 0, 0.9);
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 6px;
+            white-space: nowrap;
+            font-size: 12px;
+            font-weight: normal;
+            z-index: 1000;
+            pointer-events: none;
+        }
         .controls {
             margin-top: 20px;
             display: flex;
@@ -209,6 +262,10 @@
                     <span class="telemetry-label">Status:</span>
                     <span class="telemetry-value" id="overlay-warnings">--</span>
                 </div>
+            </div>
+            <div class="commands-overlay">
+                <h3>COMMANDS</h3>
+                <button class="command-btn" onclick="sendCommand('calibrate')" data-tooltip="Calibrate Gyro">🧭</button>
             </div>
         </div>
         

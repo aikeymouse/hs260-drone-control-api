@@ -50,6 +50,7 @@ public class DebugApiServer {
         void onMoveUp();      // Move up
         void onMoveDown();    // Move down
         void onStopManual();  // Stop manual control
+        void onCalibrate();   // Gyro calibration
     }
     
     public DebugApiServer(ApiCallback callback) {
@@ -230,12 +231,19 @@ public class DebugApiServer {
             sendJsonResponse(client, 200, "{\"result\":\"stopped\"}", corsHeaders);
             client.close();
             
+        } else if (path.equals("/api/calibrate")) {
+            callback.onCalibrate();
+            sendJsonResponse(client, 200, "{\"result\":\"calibrating\"}", corsHeaders);
+            client.close();
+            
         } else if (path.equals("/api/video.mjpg")) {
             serveMjpegStream(client);
             // Don't close - streaming keeps connection open
             
         } else if (path.equals("/") || path.equals("/index.html")) {
-            sendHtmlDashboard(client, corsHeaders);
+            // Just return status JSON for simplicity
+            String status = callback.getStatus();
+            sendJsonResponse(client, 200, status, corsHeaders);
             client.close();
             
         } else {
@@ -264,82 +272,6 @@ public class DebugApiServer {
         String response = "HTTP/1.1 " + code + " OK\r\n" +
                          extraHeaders +
                          "Content-Type: application/json\r\n" +
-                         "Content-Length: " + body.length + "\r\n" +
-                         "\r\n";
-        out.write(response.getBytes(StandardCharsets.UTF_8));
-        out.write(body);
-        out.flush();
-    }
-    
-    private void sendHtmlDashboard(Socket client, String extraHeaders) throws Exception {
-        String html = "<!DOCTYPE html>\n" +
-                "<html>\n" +
-                "<head>\n" +
-                "  <title>DroneController Debug Dashboard</title>\n" +
-                "  <style>\n" +
-                "    body { font-family: Arial; margin: 20px; background: #1e1e1e; color: #fff; }\n" +
-                "    h1 { color: #4CAF50; }\n" +
-                "    .container { display: flex; gap: 20px; }\n" +
-                "    .left-panel { flex: 1; }\n" +
-                "    .video-panel { flex: 2; }\n" +
-                "    .status { padding: 10px; background: #2d2d2d; border-radius: 5px; margin: 10px 0; }\n" +
-                "    #video-stream { width: 100%; max-width: 960px; background: #000; border-radius: 5px; }\n" +
-                "    button { padding: 15px 30px; margin: 5px; font-size: 16px; cursor: pointer; " +
-                "             border: none; border-radius: 5px; width: 100%; }\n" +
-                "    .connect { background: #4CAF50; color: white; }\n" +
-                "    .disconnect { background: #f44336; color: white; }\n" +
-                "    .takeoff { background: #2196F3; color: white; }\n" +
-                "    .land { background: #FF9800; color: white; }\n" +
-                "    button:hover { opacity: 0.8; }\n" +
-                "    #status-display { white-space: pre-wrap; }\n" +
-                "  </style>\n" +
-                "</head>\n" +
-                "<body>\n" +
-                "  <h1>🚁 DroneController Debug Dashboard</h1>\n" +
-                "  <div class='container'>\n" +
-                "    <div class='left-panel'>\n" +
-                "      <div class='status'>\n" +
-                "        <h3>Status:</h3>\n" +
-                "        <div id='status-display'>Loading...</div>\n" +
-                "      </div>\n" +
-                "      <div>\n" +
-                "        <button class='connect' onclick='sendCommand(\"connect\")'>Connect</button>\n" +
-                "        <button class='disconnect' onclick='sendCommand(\"disconnect\")'>Disconnect</button>\n" +
-                "        <button class='takeoff' onclick='sendCommand(\"takeoff\")'>Takeoff</button>\n" +
-                "        <button class='land' onclick='sendCommand(\"land\")'>Land</button>\n" +
-                "      </div>\n" +
-                "    </div>\n" +
-                "    <div class='video-panel'>\n" +
-                "      <h3>Live Video Feed</h3>\n" +
-                "      <img id='video-stream' src='/api/video.mjpg' alt='Video stream will appear here when connected'>\n" +
-                "    </div>\n" +
-                "  </div>\n" +
-                "  <script>\n" +
-                "    function sendCommand(cmd) {\n" +
-                "      fetch('/api/' + cmd)\n" +
-                "        .then(r => r.json())\n" +
-                "        .then(data => { console.log(data); updateStatus(); })\n" +
-                "        .catch(e => console.error(e));\n" +
-                "    }\n" +
-                "    function updateStatus() {\n" +
-                "      fetch('/api/status')\n" +
-                "        .then(r => r.json())\n" +
-                "        .then(data => {\n" +
-                "          document.getElementById('status-display').textContent = JSON.stringify(data, null, 2);\n" +
-                "        })\n" +
-                "        .catch(e => console.error(e));\n" +
-                "    }\n" +
-                "    setInterval(updateStatus, 1000);\n" +
-                "    updateStatus();\n" +
-                "  </script>\n" +
-                "</body>\n" +
-                "</html>";
-        
-        byte[] body = html.getBytes(StandardCharsets.UTF_8);
-        OutputStream out = client.getOutputStream();
-        String response = "HTTP/1.1 200 OK\r\n" +
-                         extraHeaders +
-                         "Content-Type: text/html\r\n" +
                          "Content-Length: " + body.length + "\r\n" +
                          "\r\n";
         out.write(response.getBytes(StandardCharsets.UTF_8));
