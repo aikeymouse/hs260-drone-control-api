@@ -86,6 +86,9 @@ public class MainActivity extends AppCompatActivity {
     private int frameCount = 0;
     private long lastFrameTime = 0;
     
+    // Native video library initialization flag
+    private boolean nativeVideoInitialized = false;
+    
     // Video frame listener - receives decoded YUV frames from native library
     private c videoFrameListener = new c() {
         @Override
@@ -414,11 +417,16 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
                 
-                // Initialize native video library
+                // Initialize native video library ONCE (not on every reconnect)
                 // Mode 1 for platform 4 (HS260 with A9-720P), Mode 0 for others
                 // Platform 4 uses MediaCodec H.264 decoding, not live555
-                int initResult = SDLActivity.liveInit(1);
-                logDebug("Native video library initialized with mode 1 (platform 4): " + initResult);
+                if (!nativeVideoInitialized) {
+                    int initResult = SDLActivity.liveInit(1);
+                    logDebug("Native video library initialized with mode 1 (platform 4): " + initResult);
+                    nativeVideoInitialized = true;
+                } else {
+                    logDebug("Native video library already initialized, skipping liveInit");
+                }
                 
                 // Register video frame listener to receive decoded frames
                 SDLActivity.setLiveListener(videoFrameListener);
