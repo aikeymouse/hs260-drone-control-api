@@ -10,6 +10,7 @@ let spsData = null;
 let ppsData = null;
 let decoderConfigured = false;
 let waitingForKeyframe = false;
+let showVideoLogs = false;
 
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
@@ -73,10 +74,42 @@ function initDecoder() {
 
 initDecoder();
 
+function toggleVideoLogs() {
+    showVideoLogs = document.getElementById('videoLogsToggle').checked;
+    
+    // Re-filter existing log entries
+    const logEl = document.getElementById('log');
+    const entries = logEl.querySelectorAll('.log-entry');
+    entries.forEach(entry => {
+        const isVideoLog = entry.hasAttribute('data-video-log');
+        if (isVideoLog) {
+            entry.style.display = showVideoLogs ? 'block' : 'none';
+        }
+    });
+}
+
 function log(message, type = 'info') {
     const logEl = document.getElementById('log');
     const entry = document.createElement('div');
     entry.className = 'log-entry';
+    
+    // Mark video-related logs
+    const isVideoLog = message.includes('frame') || 
+                       message.includes('Frame') || 
+                       message.includes('Decoded') || 
+                       message.includes('SPS') || 
+                       message.includes('PPS') || 
+                       message.includes('NAL') ||
+                       message.includes('codec') ||
+                       message.includes('Decoder') ||
+                       message.includes('decoder');
+    
+    if (isVideoLog) {
+        entry.setAttribute('data-video-log', 'true');
+        if (!showVideoLogs) {
+            entry.style.display = 'none';
+        }
+    }
     
     const time = new Date().toLocaleTimeString();
     entry.innerHTML = `<span class="log-time">[${time}]</span> <span class="log-${type}">${message}</span>`;
