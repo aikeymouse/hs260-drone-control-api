@@ -233,7 +233,15 @@ public class DebugApiServer {
             
         } else if (path.equals("/api/calibrate")) {
             callback.onCalibrate();
-            sendJsonResponse(client, 200, "{\"result\":\"calibrating\"}", corsHeaders);
+            
+            // Wait 3 seconds for calibration to complete before responding
+            try {
+                Thread.sleep(3000);
+            } catch (InterruptedException e) {
+                // Ignore interruption
+            }
+            
+            sendJsonResponse(client, 200, "{\"result\":\"success\",\"message\":\"Calibration complete\"}", corsHeaders);
             client.close();
             
         } else if (path.equals("/api/video.mjpg")) {
