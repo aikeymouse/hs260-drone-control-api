@@ -395,6 +395,7 @@ public class MainActivity extends AppCompatActivity {
                 // Recreate video decoder if it was destroyed on disconnect
                 if (videoDecoder == null && surfaceHolder != null && surfaceHolder.getSurface() != null) {
                     logDebug("Recreating video decoder for reconnection");
+                    logDebug("Surface valid: " + surfaceHolder.getSurface().isValid());
                     videoDecoder = new VideoDecoder(surfaceHolder.getSurface());
                     
                     // Set frame callback for MJPEG streaming
@@ -414,7 +415,12 @@ public class MainActivity extends AppCompatActivity {
                     
                     if (!videoDecoder.start()) {
                         logDebug("ERROR: Failed to start video decoder");
+                    } else {
+                        logDebug("Video decoder started successfully for reconnection");
                     }
+                } else {
+                    logDebug("Video decoder NOT recreated: decoder=" + videoDecoder + ", surfaceHolder=" + surfaceHolder + 
+                             ", surface=" + (surfaceHolder != null ? surfaceHolder.getSurface() : "null"));
                 }
                 
                 // Initialize native video library ONCE (not on every reconnect)
