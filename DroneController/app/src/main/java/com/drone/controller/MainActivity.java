@@ -97,6 +97,11 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void b(byte[] frameData) {
             // MAIN VIDEO FRAME CALLBACK - receives H.264 encoded packets
+            // Ignore frames when not connected to drone
+            if (!isConnected) {
+                return;
+            }
+            
             frameCount++;
             long now = System.currentTimeMillis();
             
