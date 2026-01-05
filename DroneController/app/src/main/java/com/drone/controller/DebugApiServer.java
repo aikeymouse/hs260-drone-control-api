@@ -44,6 +44,12 @@ public class DebugApiServer {
         void onDisconnect();
         String getStatus();
         Bitmap getLatestFrame();
+        // Manual control - slow movements
+        void onYawLeft();     // Turn left
+        void onYawRight();    // Turn right
+        void onMoveUp();      // Move up
+        void onMoveDown();    // Move down
+        void onStopManual();  // Stop manual control
     }
     
     public DebugApiServer(ApiCallback callback) {
@@ -176,6 +182,31 @@ public class DebugApiServer {
         } else if (path.equals("/api/disconnect")) {
             callback.onDisconnect();
             sendJsonResponse(client, 200, "{\"result\":\"disconnect initiated\"}", corsHeaders);
+            client.close();
+            
+        } else if (path.equals("/api/yaw/left")) {
+            callback.onYawLeft();
+            sendJsonResponse(client, 200, "{\"result\":\"turning left\"}", corsHeaders);
+            client.close();
+            
+        } else if (path.equals("/api/yaw/right")) {
+            callback.onYawRight();
+            sendJsonResponse(client, 200, "{\"result\":\"turning right\"}", corsHeaders);
+            client.close();
+            
+        } else if (path.equals("/api/move/up")) {
+            callback.onMoveUp();
+            sendJsonResponse(client, 200, "{\"result\":\"moving up\"}", corsHeaders);
+            client.close();
+            
+        } else if (path.equals("/api/move/down")) {
+            callback.onMoveDown();
+            sendJsonResponse(client, 200, "{\"result\":\"moving down\"}", corsHeaders);
+            client.close();
+            
+        } else if (path.equals("/api/stop")) {
+            callback.onStopManual();
+            sendJsonResponse(client, 200, "{\"result\":\"stopped\"}", corsHeaders);
             client.close();
             
         } else if (path.equals("/api/video.mjpg")) {

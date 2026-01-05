@@ -1052,6 +1052,57 @@ public class MainActivity extends AppCompatActivity {
                     return null;
                 }
             }
+
+            @Override
+            public void onYawLeft() {
+                mainHandler.post(() -> {
+                    synchronized (packetLock) {
+                        flySendInfo.setYaw(90);  // Slow left turn (128 - 38 = 90)
+                        logDebug("Manual control: Yaw LEFT");
+                    }
+                });
+            }
+
+            @Override
+            public void onYawRight() {
+                mainHandler.post(() -> {
+                    synchronized (packetLock) {
+                        flySendInfo.setYaw(166);  // Slow right turn (128 + 38 = 166)
+                        logDebug("Manual control: Yaw RIGHT");
+                    }
+                });
+            }
+
+            @Override
+            public void onMoveUp() {
+                mainHandler.post(() -> {
+                    synchronized (packetLock) {
+                        flySendInfo.setAccelerate(166);  // Slow up (128 + 38 = 166)
+                        logDebug("Manual control: Move UP");
+                    }
+                });
+            }
+
+            @Override
+            public void onMoveDown() {
+                mainHandler.post(() -> {
+                    synchronized (packetLock) {
+                        flySendInfo.setAccelerate(90);  // Slow down (128 - 38 = 90)
+                        logDebug("Manual control: Move DOWN");
+                    }
+                });
+            }
+
+            @Override
+            public void onStopManual() {
+                mainHandler.post(() -> {
+                    synchronized (packetLock) {
+                        flySendInfo.setYaw(128);        // Center yaw
+                        flySendInfo.setAccelerate(128);  // Hover throttle
+                        logDebug("Manual control: STOPPED - neutral position");
+                    }
+                });
+            }
         });
         apiServer.start();
         

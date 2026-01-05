@@ -180,8 +180,25 @@
             <button onclick="clearLog()">🗑️ Clear Log</button>
         </div>
         
-        <div class="panel" style="margin-top: 20px;">
-            <h3 style="margin-bottom: 10px;">Connection Log</h3>
+        <div class="controls" style="margin-top: 20px;">
+            <h3 style="text-align: center; margin-bottom: 15px; color: #fff;">✈️ Manual Flight Control</h3>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 400px; margin: 0 auto;">
+                <div></div>
+                <button onmousedown="holdControl('move/up')" onmouseup="stopControl()" ontouchstart="holdControl('move/up')" ontouchend="stopControl()" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); font-size: 20px;">⬆️<br>UP</button>
+                <div></div>
+                
+                <button onmousedown="holdControl('yaw/left')" onmouseup="stopControl()" ontouchstart="holdControl('yaw/left')" ontouchend="stopControl()" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); font-size: 20px;">⬅️<br>LEFT</button>
+                <button onclick="stopControl()" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); font-size: 32px; padding: 20px;">⏹️</button>
+                <button onmousedown="holdControl('yaw/right')" onmouseup="stopControl()" ontouchstart="holdControl('yaw/right')" ontouchend="stopControl()" style="background: linear-gradient(135deg, #30cfd0 0%, #330867 100%); font-size: 20px;">➡️<br>RIGHT</button>
+                
+                <div></div>
+                <button onmousedown="holdControl('move/down')" onmouseup="stopControl()" ontouchstart="holdControl('move/down')" ontouchend="stopControl()" style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); font-size: 20px;">⬇️<br>DOWN</button>
+                <div></div>
+            </div>
+            <p style="text-align: center; color: #aaa; margin-top: 10px; font-size: 14px;">Hold button or use arrow keys to control. Release to stop.</p>
+        </div>
+        
+        <div class="panel" style="margin-top: 20px;">\n            <h3 style="margin-bottom: 10px;">Connection Log</h3>
             <div class="log" id="log"></div>
         </div>
     </div>
@@ -662,6 +679,68 @@
         
         // Update drone status every 2 seconds
         setInterval(updateDroneStatus, 2000);
+        
+        // Manual control functions
+        let controlInterval = null;
+
+        function holdControl(direction) {
+            // Send immediately
+            fetch(`http://localhost:9000/api/${direction}`, {method: 'POST'})
+                .then(() => log(`🎮 Control: ${direction}`, 'info'))
+                .catch(e => console.error(e));
+            
+            // Keep sending while held (every 100ms for responsiveness)
+            if (controlInterval) clearInterval(controlInterval);
+            controlInterval = setInterval(() => {
+                fetch(`http://localhost:9000/api/${direction}`, {method: 'POST'})
+                    .catch(e => console.error(e));
+            }, 100);
+        }
+
+        function stopControl() {
+            if (controlInterval) {
+                clearInterval(controlInterval);
+                controlInterval = null;
+            }
+            fetch('http://localhost:9000/api/stop', {method: 'POST'})
+                .then(() => log('⏹️ Control stopped', 'info'))
+                .catch(e => console.error(e));
+        }
+
+        // Keyboard controls
+        document.addEventListener('keydown', (e) => {
+            if (e.repeat) return; // Ignore key repeat
+            switch(e.key) {
+                case 'ArrowUp': 
+                    e.preventDefault();
+                    holdControl('move/up'); 
+                    break;
+                case 'ArrowDown': 
+                    e.preventDefault();
+                    holdControl('move/down'); 
+                    break;
+                case 'ArrowLeft': 
+                    e.preventDefault();
+                    holdControl('yaw/left'); 
+                    break;
+                case 'ArrowRight': 
+                    e.preventDefault();
+                    holdControl('yaw/right'); 
+                    break;
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            switch(e.key) {
+                case 'ArrowUp':
+                case 'ArrowDown':
+                case 'ArrowLeft':
+                case 'ArrowRight':
+                    e.preventDefault();
+                    stopControl();
+                    break;
+            }
+        });
         
         // Start connection
         connect();
