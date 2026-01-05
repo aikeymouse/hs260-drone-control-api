@@ -98,6 +98,27 @@ public class DebugApiServer {
         Log.d(TAG, "API server stopped");
     }
     
+    /**
+     * Close all WebSocket H.264 streaming clients
+     */
+    public void closeAllH264Clients() {
+        Log.d(TAG, "Closing all H.264 WebSocket clients (" + h264Clients.size() + " connected)");
+        for (Socket client : h264Clients) {
+            try {
+                client.close();
+            } catch (Exception e) {
+                // Ignore
+            }
+        }
+        h264Clients.clear();
+        
+        // Reset cached SPS/PPS
+        cachedSPS = null;
+        cachedPPS = null;
+        
+        Log.d(TAG, "All H.264 clients closed");
+    }
+    
     private void handleClient(Socket client) {
         try {
             BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream()));

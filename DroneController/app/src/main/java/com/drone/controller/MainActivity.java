@@ -973,6 +973,12 @@ public class MainActivity extends AppCompatActivity {
         frameCount = 0;
         lastFrameTime = System.currentTimeMillis();
         
+        // Close all WebSocket video clients
+        if (apiServer != null) {
+            apiServer.closeAllH264Clients();
+            logDebug("WebSocket video clients closed");
+        }
+        
         // Update UI
         updateStatus("Disconnected");
         mainHandler.post(this::updateUI);
