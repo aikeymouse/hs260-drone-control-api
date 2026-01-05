@@ -1,0 +1,38 @@
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Android/Gradle
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+.DS_Store
+captures/
+.externalNativeBuild
+.cxx
+
+# APK analysis (not needed for public release)
+apk-analysis/
+
+# Debug tools (optional - can remove if you want to include them)
+debug-monitor.py
+drone-ctl.py
+
+# Project planning docs (not needed for public release)
+PROJECT_STATUS.md
+REVERSE_ENGINEERING_PLAN.md
+
+# Build outputs
+*.apk
+*.ap_
+*.aab
+
+# OS files
+.DS_Store
+Thumbs.db

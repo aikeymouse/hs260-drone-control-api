@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>🚁 Drone H.264 Stream (Raw)</title>
+    <meta charset="UTF-8">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%);
+            color: #fff;
+            font-family: system-ui, -apple-system, sans-serif;
+            padding: 20px;
+        }
+        .container { max-width: 1600px; margin: 0 auto; }
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 20px;
+            background: linear-gradient(90deg, #ff0080, #7928ca, #ff0080);
+            background-size: 200% auto;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: gradient 3s linear infinite;
+        }
+        @keyframes gradient {
+            0% { background-position: 0% center; }
+            100% { background-position: 200% center; }
+        }
+        .panel {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .stat-item {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 8px;
+        }
+        .stat-label {
+            color: #888;
+            font-size: 0.85em;
+            margin-bottom: 5px;
+        }
+        .stat-value {
+            color: #fff;
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-connected { background: #0f0; box-shadow: 0 0 10px #0f0; }
+        .status-connecting { background: #fa0; box-shadow: 0 0 10px #fa0; animation: pulse 1s infinite; }
+        .status-error { background: #f00; box-shadow: 0 0 10px #f00; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        #canvas {
+            width: 100%;
+            background: #000;
+            border-radius: 8px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+        .log {
+            background: #000;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 15px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+        }
+        .log-entry {
+            padding: 3px 0;
+            border-bottom: 1px solid #222;
+        }
+        .log-time { color: #666; }
+        .log-info { color: #0f0; }
+        .log-warn { color: #fa0; }
+        .log-error { color: #f00; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚁 Drone H.264 Live Stream</h1>
+        
+        <div class="panel">
+            <div class="stats">
+                <div class="stat-item">
+                    <div class="stat-label">
+                        <span class="status-indicator status-connecting" id="indicator"></span>
+                        Connection Status
+                    </div>
+                    <div class="stat-value" id="status">Connecting...</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Drone Status</div>
+                    <div class="stat-value" id="droneStatus">Unknown</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Battery</div>
+                    <div class="stat-value" id="battery">--</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Altitude</div>
+                    <div class="stat-value" id="altitude">--</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Packets Received</div>
+                    <div class="stat-value" id="packets">0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Data Rate</div>
+                    <div class="stat-value" id="dataRate">0 KB/s</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Frames Decoded</div>
+                    <div class="stat-value" id="framesDecoded">0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Uptime</div>
+                    <div class="stat-value" id="uptime">0s</div>
+                </div>
+            </div>
+        </div>
+        
+        <canvas id="canvas" width="1280" height="720"></canvas>
+        
+        <div class="controls">
+            <button onclick="sendCommand('connect')" style="background: linear-gradient(135deg, #00d2ff 0%, #3a7bd5 100%);">🔌 Connect</button>
+            <button onclick="sendCommand('disconnect')" style="background: linear-gradient(135deg, #f2709c 0%, #ff9472 100%);">⚡ Disconnect</button>
+            <button onclick="sendCommand('takeoff')" style="background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);">🚀 Takeoff</button>
+            <button onclick="sendCommand('land')" style="background: linear-gradient(135deg, #fc4a1a 0%, #f7b733 100%);">🛬 Land</button>
+            <button onclick="reconnect()">🔄 Reconnect Stream</button>
+            <button onclick="clearLog()">🗑️ Clear Log</button>
+        </div>
+        
+        <div class="panel" style="margin-top: 20px;">
+            <h3 style="margin-bottom: 10px;">Connection Log</h3>
+            <div class="log" id="log"></div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let packetCount = 0;
+        let totalBytes = 0;
+        let lastBytes = 0;
+        let startTime = Date.now();
+        let lastUpdateTime = Date.now();
+        let decoder = null;
+        let frameCount = 0;
+        let spsData = null;
+        let ppsData = null;
+        let decoderConfigured = false;
+        let waitingForKeyframe = false;
+        
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Draw placeholder
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#fff';
+        ctx.font = '24px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('Waiting for stream...', canvas.width / 2, canvas.height / 2);
+        
+        // Initialize decoder
+        function initDecoder() {
+            if (!('VideoDecoder' in window)) {
+                log('❌ WebCodecs not supported - will only show packets', 'warn');
+                return;
+            }
+            
+            log('✅ WebCodecs API available - using native H.264 decoder', 'info');
+            
+            decoder = new VideoDecoder({
+                output: (frame) => {
+                    try {
+                        // Draw decoded frame to canvas
+                        ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
+                        frameCount++;
+                        document.getElementById('framesDecoded').textContent = frameCount;
+                        
+                        if (frameCount === 1) {
+                            log('🎬 First frame decoded and rendered!', 'info');
+                            log(`   Frame size: ${frame.displayWidth}x${frame.displayHeight}`, 'info');
+                        }
+                        if (frameCount % 30 === 0) {
+                            log(`✅ Decoded ${frameCount} frames`, 'info');
+                        }
+                    } catch (e) {
+                        log('❌ Frame output error: ' + e.message, 'error');
+                    } finally {
+                        frame.close();
+                    }
+                },
+                error: (e) => {
+                    log('❌ Decoder error: ' + e.message, 'error');
+                    log('   Error name: ' + e.name, 'error');
+                    log('   Decoder state: ' + decoder.state, 'error');
+                    console.error('Decoder error details:', e);
+                    
+                    // Don't recreate immediately to avoid infinite loop
+                    if (decoder.state === 'closed') {
+                        log('⚠️ Decoder closed due to error', 'warn');
+                        decoderConfigured = false;
+                        decoder = null;
+                        // Will recreate on next valid SPS/PPS
+                    }
+                }
+            });
+            
+            log('🎥 H.264 decoder created (waiting for SPS/PPS)', 'info');
+        }
+        
+        initDecoder();
+        
+        function log(message, type = 'info') {
+            const logEl = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            
+            const time = new Date().toLocaleTimeString();
+            entry.innerHTML = `<span class="log-time">[${time}]</span> <span class="log-${type}">${message}</span>`;
+            
+            logEl.appendChild(entry);
+            logEl.scrollTop = logEl.scrollHeight;
+            
+            // Keep only last 50 entries
+            while (logEl.children.length > 50) {
+                logEl.removeChild(logEl.firstChild);
+            }
+        }
+        
+        function updateStatus(status, indicatorClass) {
+            document.getElementById('status').textContent = status;
+            const indicator = document.getElementById('indicator');
+            indicator.className = 'status-indicator ' + indicatorClass;
+        }
+        
+        function connect() {
+            log('Connecting to ws://localhost:9000/stream...', 'info');
+            updateStatus('Connecting...', 'status-connecting');
+            
+            try {
+                ws = new WebSocket('ws://localhost:9000/stream');
+                ws.binaryType = 'arraybuffer';
+                
+                ws.onopen = () => {
+                    log('✅ WebSocket connected!', 'info');
+                    updateStatus('Connected', 'status-connected');
+                    startTime = Date.now();
+                    packetCount = 0;
+                    totalBytes = 0;
+                    frameCount = 0;
+                };
+                
+                ws.onmessage = (event) => {
+                    const data = new Uint8Array(event.data);
+                    packetCount++;
+                    totalBytes += data.length;
+                    
+                    // Clear placeholder on first packet
+                    if (packetCount === 1) {
+                        ctx.fillStyle = '#000';
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                        ctx.fillStyle = '#0f0';
+                        ctx.font = '20px monospace';
+                        ctx.fillText('Processing stream...', 20, canvas.height / 2);
+                    }
+                    
+                    // Log first few packets with detailed analysis
+                    if (packetCount <= 10) {
+                        log(`📦 Received packet #${packetCount}: ${data.length} bytes`, 'info');
+                        // Show hex dump of first 40 bytes
+                        const hex = Array.from(data.slice(0, 40))
+                            .map(b => b.toString(16).padStart(2, '0'))
+                            .join(' ');
+                        log(`   Hex: ${hex}`, 'info');
+                        
+                        // Check for Annex B start codes
+                        let foundStartCodes = 0;
+                        for (let i = 0; i < Math.min(100, data.length - 4); i++) {
+                            if (data[i] === 0 && data[i+1] === 0 && data[i+2] === 0 && data[i+3] === 1) {
+                                const nalType = data[i+4] & 0x1F;
+                                log(`   Start code at offset ${i}, NAL type: ${nalType}`, 'info');
+                                foundStartCodes++;
+                            }
+                        }
+                        if (foundStartCodes === 0) {
+                            log(`   No Annex B start codes found in first 100 bytes`, 'warn');
+                        }
+                    }
+                    
+                    // These packets don't have Annex B start codes (00 00 00 01)
+                    // They appear to be raw NAL units, possibly with length prefix
+                    // Try to parse and add Annex B format
+                    
+                    let nalUnits = [];
+                    let offset = 0;
+                    
+                    // Try parsing as length-prefixed NAL units (4-byte big-endian length)
+                    while (offset + 4 < data.length) {
+                        const length = (data[offset] << 24) | (data[offset+1] << 16) | 
+                                      (data[offset+2] << 8) | data[offset+3];
+                        
+                        if (length > 0 && length <= 100000 && offset + 4 + length <= data.length) {
+                            const nalUnit = data.slice(offset + 4, offset + 4 + length);
+                            nalUnits.push(nalUnit);
+                            offset += 4 + length;
+                            
+                            if (packetCount <= 3) {
+                                const nalType = nalUnit[0] & 0x1F;
+                                log(`   Parsed NAL: offset=${offset-4-length}, length=${length}, type=${nalType}`, 'info');
+                            }
+                        } else {
+                            // Invalid length, might not be length-prefixed
+                            break;
+                        }
+                    }
+                    
+                    // If parsing failed or no NAL units found, treat entire packet as one NAL
+                    if (nalUnits.length === 0) {
+                        if (packetCount <= 3) {
+                            log(`   Not length-prefixed, using entire packet as NAL`, 'info');
+                        }
+                        nalUnits.push(data);
+                    }
+                    
+                    // Process each NAL unit
+                    for (const nalUnit of nalUnits) {
+                        const nalType = nalUnit[0] & 0x1F;
+                        const nalNames = {
+                            1: 'P-frame',
+                            5: 'IDR (I-frame)',
+                            6: 'SEI',
+                            7: 'SPS',
+                            8: 'PPS',
+                            9: 'AUD'
+                        };
+                        
+                        if (packetCount <= 10 || nalType === 7 || nalType === 8 || nalType === 5) {
+                            log(`📺 NAL Type ${nalType}: ${nalNames[nalType] || 'Unknown'} (${nalUnit.length} bytes)`, 'info');
+                        }
+                        
+                        // Extract SPS
+                        if (nalType === 7) {
+                            spsData = nalUnit;
+                            log('📋 SPS extracted (' + spsData.length + ' bytes)', 'info');
+                        }
+                        
+                        // Extract PPS
+                        if (nalType === 8) {
+                            ppsData = nalUnit;
+                            log('📋 PPS extracted (' + ppsData.length + ' bytes)', 'info');
+                        }
+                        
+                        // Configure decoder once we have both SPS and PPS
+                        if (spsData && ppsData && !decoderConfigured) {
+                            // Recreate decoder if it was closed due to error
+                            if (!decoder || decoder.state === 'closed') {
+                                log('🔄 Recreating decoder...', 'info');
+                                initDecoder();
+                            }
+                            
+                            if (decoder) {
+                                try {
+                                    // Create avcC-style description box
+                                    const description = createAVCDecoderConfig(spsData, ppsData);
+                                    
+                                    log(`🔧 Configuring decoder with:`, 'info');
+                                    log(`   SPS: ${spsData.length} bytes`, 'info');
+                                    log(`   PPS: ${ppsData.length} bytes`, 'info');
+                                    log(`   Profile: ${spsData[1].toString(16)}, Level: ${spsData[3].toString(16)}`, 'info');
+                                    
+                                    decoder.configure({
+                                        codec: 'avc1.42E01E',
+                                        codedWidth: 1280,
+                                        codedHeight: 720,
+                                        description: description,
+                                        hardwareAcceleration: 'prefer-hardware'
+                                    });
+                                    
+                                    decoderConfigured = true;
+                                    waitingForKeyframe = true;
+                                    log('✅ Decoder configured with SPS/PPS! Waiting for I-frame...', 'info');
+                                } catch (e) {
+                                    log('❌ Failed to configure decoder: ' + e.message, 'error');
+                                    log('   Stack: ' + e.stack, 'error');
+                                    console.error('Configure error:', e);
+                                }
+                            }
+                        }
+                        
+                        // Decode frames (not SPS/PPS/SEI) - must wait for keyframe after configure
+                        if (decoder && decoder.state === 'configured' && decoderConfigured && nalType !== 7 && nalType !== 8 && nalType !== 6 && nalType !== 9) {
+                            // Skip frames until we get a keyframe (I-frame)
+                            if (waitingForKeyframe && nalType !== 5) {
+                                if (packetCount % 30 === 0) {
+                                    log(`⏳ Waiting for I-frame (got NAL type ${nalType})`, 'warn');
+                                }
+                                continue; // Skip non-keyframes
+                            }
+                            
+                            if (waitingForKeyframe && nalType === 5) {
+                                waitingForKeyframe = false;
+                                log('🎬 Got I-frame! Starting decode...', 'info');
+                            }
+                            
+                            try {
+                                // Convert to length-prefixed format (avcC mode with description box)
+                                const nalData = toLengthPrefixed(nalUnit);
+                                
+                                // Feed length-prefixed NAL unit to decoder
+                                const chunk = new EncodedVideoChunk({
+                                    type: (nalType === 5) ? 'key' : 'delta',
+                                    timestamp: packetCount * 33333,
+                                    data: nalData
+                                });
+                                
+                                if (nalType === 5 && frameCount < 5) {
+                                    log(`🎬 Submitting I-frame for decode (${nalUnit.length} bytes)`, 'info');
+                                    log(`   Chunk type: ${chunk.type}, timestamp: ${chunk.timestamp}`, 'info');
+                                    log(`   Decoder state before: ${decoder.state}`, 'info');
+                                }
+                                
+                                decoder.decode(chunk);
+                                
+                                if (nalType === 5 && frameCount < 5) {
+                                    log(`   Decoder state after: ${decoder.state}, queue: ${decoder.decodeQueueSize}`, 'info');
+                                }
+                                
+                                if (decoder && decoder.decodeQueueSize > 20) {
+                                    log(`⚠️ Decode queue backing up: ${decoder.decodeQueueSize}`, 'warn');
+                                }
+                            } catch (e) {
+                                log('❌ Decode error: ' + e.message, 'error');
+                                log('   NAL type: ' + nalType + ', length: ' + nalUnit.length, 'error');
+                                console.error(e);
+                            }
+                        }
+                    }
+                    
+                    // Update stats
+                    document.getElementById('packets').textContent = packetCount.toLocaleString();
+                };
+                
+                ws.onerror = (error) => {
+                    log('❌ WebSocket error: ' + error, 'error');
+                    updateStatus('Error', 'status-error');
+                };
+                
+                ws.onclose = () => {
+                    log('⚠️ WebSocket closed. Reconnecting in 3s...', 'warn');
+                    updateStatus('Disconnected', 'status-error');
+                    setTimeout(connect, 3000);
+                };
+                
+            } catch (e) {
+                log('❌ Connection failed: ' + e.message, 'error');
+                updateStatus('Error', 'status-error');
+                setTimeout(connect, 3000);
+            }
+        }
+        
+        function isKeyFrame(data) {
+            // Check if this is an IDR frame (NAL type 5) or has SPS/PPS (NAL type 7/8)
+            if (data.length > 4 && data[0] === 0 && data[1] === 0 && data[2] === 0 && data[3] === 1) {
+                const nalType = data[4] & 0x1F;
+                return nalType === 5 || nalType === 7 || nalType === 8;
+            }
+            // Also check first byte directly
+            const nalType = data[0] & 0x1F;
+            return nalType === 5 || nalType === 7 || nalType === 8;
+        }
+        
+        function createAVCDecoderConfig(sps, pps) {
+            // Create avcC box format for WebCodecs
+            // Reference: ISO/IEC 14496-15 Section 5.2.4.1
+            const config = new Uint8Array(11 + sps.length + pps.length);
+            let offset = 0;
+            
+            config[offset++] = 1; // configurationVersion
+            config[offset++] = sps[1]; // AVCProfileIndication
+            config[offset++] = sps[2]; // profile_compatibility
+            config[offset++] = sps[3]; // AVCLevelIndication
+            config[offset++] = 0xFF; // lengthSizeMinusOne (4 bytes)
+            config[offset++] = 0xE1; // numOfSequenceParameterSets (1)
+            
+            // SPS length
+            config[offset++] = (sps.length >> 8) & 0xFF;
+            config[offset++] = sps.length & 0xFF;
+            config.set(sps, offset);
+            offset += sps.length;
+            
+            config[offset++] = 1; // numOfPictureParameterSets
+            
+            // PPS length
+            config[offset++] = (pps.length >> 8) & 0xFF;
+            config[offset++] = pps.length & 0xFF;
+            config.set(pps, offset);
+            
+            return config;
+        }
+        
+        function toAnnexB(nalUnit) {
+            // Convert raw NAL unit to Annex B format (add 00 00 00 01 start code)
+            const startCode = new Uint8Array([0, 0, 0, 1]);
+            const result = new Uint8Array(startCode.length + nalUnit.length);
+            result.set(startCode, 0);
+            result.set(nalUnit, startCode.length);
+            return result;
+        }
+        
+        function toLengthPrefixed(nalUnit) {
+            // Convert raw NAL unit to length-prefixed format (4-byte big-endian length + NAL)
+            const result = new Uint8Array(4 + nalUnit.length);
+            result[0] = (nalUnit.length >> 24) & 0xFF;
+            result[1] = (nalUnit.length >> 16) & 0xFF;
+            result[2] = (nalUnit.length >> 8) & 0xFF;
+            result[3] = nalUnit.length & 0xFF;
+            result.set(nalUnit, 4);
+            return result;
+        }
+        
+        function reconnect() {
+            if (ws) {
+                ws.close();
+            }
+            if (decoder) {
+                decoder.reset();
+            }
+            packetCount = 0;
+            totalBytes = 0;
+            frameCount = 0;
+            spsData = null;
+            ppsData = null;
+            decoderConfigured = false;
+            connect();
+        }
+        
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+        
+        async function sendCommand(command) {
+            try {
+                const response = await fetch(`http://localhost:9000/api/${command}`, {
+                    method: 'POST'
+                });
+                const result = await response.json();
+                log(`📤 Command: ${command} - ${result.status}`, result.status === 'success' ? 'info' : 'error');
+                
+                // Update drone status immediately after command
+                setTimeout(updateDroneStatus, 500);
+            } catch (e) {
+                log(`❌ Command failed: ${command} - ${e.message}`, 'error');
+            }
+        }
+        
+        async function updateDroneStatus() {
+            try {
+                const response = await fetch('http://localhost:9000/api/status');
+                const status = await response.json();
+                
+                // Update telemetry display
+                document.getElementById('droneStatus').textContent = status.connected ? 
+                    (status.flying ? '✈️ Flying' : '🛬 Landed') : '⚠️ Disconnected';
+                
+                document.getElementById('battery').textContent = status.battery ? status.battery + '%' : '--';
+                document.getElementById('altitude').textContent = status.altitude ? status.altitude + 'm' : '--';
+                
+            } catch (e) {
+                // Silently fail - likely not connected yet
+            }
+        }
+        
+        // Update stats every second
+        setInterval(() => {
+            const now = Date.now();
+            const elapsed = (now - lastUpdateTime) / 1000;
+            
+            // Data rate
+            const bytesPerSec = (totalBytes - lastBytes) / elapsed;
+            document.getElementById('dataRate').textContent = (bytesPerSec / 1024).toFixed(1) + ' KB/s';
+            lastBytes = totalBytes;
+            lastUpdateTime = now;
+            
+            // Uptime
+            const uptime = Math.floor((now - startTime) / 1000);
+            document.getElementById('uptime').textContent = uptime + 's';
+        }, 1000);
+        
+        // Update drone status every 2 seconds
+        setInterval(updateDroneStatus, 2000);
+        
+        // Start connection
+        connect();
+        updateDroneStatus();
+    </script>
+</body>
+</html>
