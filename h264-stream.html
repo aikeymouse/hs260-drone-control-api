@@ -67,11 +67,47 @@
             0%, 100% { opacity: 1; }
             50% { opacity: 0.5; }
         }
+        .video-container {
+            position: relative;
+            width: 100%;
+        }
         #canvas {
             width: 100%;
             background: #000;
             border-radius: 8px;
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            display: block;
+        }
+        .telemetry-overlay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            border-radius: 8px;
+            padding: 10px 15px;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            font-size: 0.9em;
+            flex-wrap: wrap;
+        }
+        .telemetry-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .telemetry-label {
+            color: #aaa;
+            font-weight: 500;
+        }
+        .telemetry-value {
+            color: #fff;
+            font-weight: bold;
+        }
+        .telemetry-icon {
+            font-size: 1.2em;
         }
         .controls {
             margin-top: 20px;
@@ -127,30 +163,6 @@
                     <div class="stat-value" id="status">Connecting...</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-label">Drone Status</div>
-                    <div class="stat-value" id="droneStatus">Unknown</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-label">Battery</div>
-                    <div class="stat-value" id="battery">--</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-label">Altitude</div>
-                    <div class="stat-value" id="altitude">--</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-label">Motors</div>
-                    <div class="stat-value" id="motors">--</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-label">Flight Mode</div>
-                    <div class="stat-value" id="flightMode">--</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-label">Warnings</div>
-                    <div class="stat-value" id="warnings">--</div>
-                </div>
-                <div class="stat-item">
                     <div class="stat-label">Packets Received</div>
                     <div class="stat-value" id="packets">0</div>
                 </div>
@@ -169,7 +181,36 @@
             </div>
         </div>
         
-        <canvas id="canvas" width="1280" height="720"></canvas>
+        <div class="video-container">
+            <canvas id="canvas" width="1280" height="720"></canvas>
+            <div class="telemetry-overlay">
+                <div class="telemetry-item">
+                    <span class="telemetry-icon">🔋</span>
+                    <span class="telemetry-label">Battery:</span>
+                    <span class="telemetry-value" id="overlay-battery">--</span>
+                </div>
+                <div class="telemetry-item">
+                    <span class="telemetry-icon">📏</span>
+                    <span class="telemetry-label">Altitude:</span>
+                    <span class="telemetry-value" id="overlay-altitude">--</span>
+                </div>
+                <div class="telemetry-item">
+                    <span class="telemetry-icon">⚙️</span>
+                    <span class="telemetry-label">Motors:</span>
+                    <span class="telemetry-value" id="overlay-motors">--</span>
+                </div>
+                <div class="telemetry-item">
+                    <span class="telemetry-icon">✈️</span>
+                    <span class="telemetry-label">Mode:</span>
+                    <span class="telemetry-value" id="overlay-mode">--</span>
+                </div>
+                <div class="telemetry-item">
+                    <span class="telemetry-icon">⚠️</span>
+                    <span class="telemetry-label">Status:</span>
+                    <span class="telemetry-value" id="overlay-warnings">--</span>
+                </div>
+            </div>
+        </div>
         
         <div class="controls">
             <button onclick="sendCommand('connect')" style="background: linear-gradient(135deg, #00d2ff 0%, #3a7bd5 100%);">🔌 Connect</button>
@@ -627,18 +668,14 @@
                 const response = await fetch('http://localhost:9000/api/status');
                 const status = await response.json();
                 
-                // Update basic status
-                document.getElementById('droneStatus').textContent = status.connected ? 
-                    (status.flying ? '✈️ Flying' : '🛬 Landed') : '⚠️ Disconnected';
-                
                 // Battery
-                document.getElementById('battery').textContent = status.battery ? status.battery + '%' : '--';
+                document.getElementById('overlay-battery').textContent = status.battery ? status.battery + '%' : '--';
                 
                 // Altitude
-                document.getElementById('altitude').textContent = status.altitude ? status.altitude + 'm' : '--';
+                document.getElementById('overlay-altitude').textContent = status.altitude ? status.altitude + 'm' : '--';
                 
                 // Motors
-                document.getElementById('motors').textContent = status.motorRunning ? '🔄 ON' : '⏸️ OFF';
+                document.getElementById('overlay-motors').textContent = status.motorRunning ? 'ON' : 'OFF';
                 
                 // Flight mode
                 let modes = [];
@@ -647,14 +684,15 @@
                 if (status.followMode) modes.push('Follow');
                 if (status.takeOff) modes.push('Takeoff');
                 if (status.landed) modes.push('Landed');
-                document.getElementById('flightMode').textContent = modes.length > 0 ? modes.join(', ') : 'Normal';
+                const modeText = modes.length > 0 ? modes.join(', ') : 'Normal';
+                document.getElementById('overlay-mode').textContent = modeText;
                 
                 // Warnings
                 let warnings = [];
                 if (status.galeWarning) warnings.push('⚠️ Wind');
                 if (status.currentOver) warnings.push('⚠️ Current');
                 if (status.calibrate) warnings.push('🔧 Calibrating');
-                document.getElementById('warnings').textContent = warnings.length > 0 ? warnings.join(' ') : '✅ OK';
+                document.getElementById('overlay-warnings').textContent = warnings.length > 0 ? warnings.join(' ') : 'OK';
                 
             } catch (e) {
                 // Silently fail - likely not connected yet

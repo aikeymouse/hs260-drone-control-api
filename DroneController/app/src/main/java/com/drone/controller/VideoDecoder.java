@@ -189,6 +189,12 @@ public class VideoDecoder {
                 decoder.release();
                 decoder = null;
                 Log.d(TAG, "MediaCodec decoder stopped");
+                
+                // Give MediaCodec threads time to fully terminate
+                // This prevents thread accumulation on quick reconnects
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Log.w(TAG, "Interrupted while waiting for decoder cleanup");
             } catch (Exception e) {
                 Log.e(TAG, "Error stopping decoder", e);
             }
