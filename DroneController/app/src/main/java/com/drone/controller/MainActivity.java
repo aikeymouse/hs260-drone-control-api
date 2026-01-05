@@ -74,6 +74,7 @@ public class MainActivity extends AppCompatActivity {
     // Video surface for hardware rendering
     private SurfaceHolder surfaceHolder;
     private VideoDecoder videoDecoder;
+    private boolean surfaceReady = false;  // Track if surface is ready for use
     
     // Debug API server for remote control via ADB
     private DebugApiServer apiServer;
@@ -186,47 +187,32 @@ public class MainActivity extends AppCompatActivity {
         surfaceHolder = videoView.getHolder();
         videoView.setZOrderOnTop(false); // Ensure video is rendered below UI
         videoView.setZOrderMediaOverlay(false); // Don't overlay on media
-        surfaceHolder.setFormat(android.graphics.PixelFormat.TRANSLUCENT);
+        surfaceHolder.setFormat(android.graphics.PixelFormat.OPAQUE);  // MediaCodec requires opaque surface
         
         surfaceHolder.addCallback(new SurfaceHolder.Callback() {
             @Override
             public void surfaceCreated(SurfaceHolder holder) {
-                logDebug("Surface created, initializing video decoder");
-                // Create and start MediaCodec decoder
-                videoDecoder = new VideoDecoder(holder.getSurface());
-                
-                // Set frame callback for MJPEG streaming (every 2nd frame to reduce load)
-                if (apiServer != null) {
-                    videoDecoder.setFrameCallback(new VideoDecoder.FrameCallback() {
-                        int framesSent = 0;
-                        @Override
-                        public void onFrameDecoded(android.graphics.Bitmap frame) {
-                            apiServer.sendFrame(frame);
-                            framesSent++;
-                            if (framesSent % 100 == 0) {
-                                logDebug("MJPEG: Sent " + framesSent + " decoded frames");
-                            }
-                        }
-                    }, 2); // Send every 2nd frame (~15 FPS)
-                }
-                
-                if (!videoDecoder.start()) {
-                    logDebug("ERROR: Failed to start video decoder");
-                }
+                logDebug("Surface created");
+                // Update surfaceHolder reference when surface is created
+                surfaceHolder = holder;
+                surfaceReady = true;
+                // Don't create decoder here - it will be created when connecting to drone
+                // This prevents having a decoder that's not receiving frames
             }
 
             @Override
             public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
                 logDebug(String.format("Surface changed: %dx%d", width, height));
+                // Update surfaceHolder reference
+                surfaceHolder = holder;
             }
 
             @Override
             public void surfaceDestroyed(SurfaceHolder holder) {
-                logDebug("Surface destroyed, stopping video decoder");
-                if (videoDecoder != null) {
-                    videoDecoder.stop();
-                    videoDecoder = null;
-                }
+                logDebug("Surface destroyed");
+                surfaceReady = false;
+                // Don't stop decoder here - it will be recreated when surface is recreated
+                // Stopping it here causes IllegalStateException when frames arrive after destroy
             }
         });
 
@@ -392,10 +378,41 @@ public class MainActivity extends AppCompatActivity {
                 logDebug("Send Rate: " + CONTROL_RATE_MS + "ms (" + (1000/CONTROL_RATE_MS) + "Hz)");
                 logDebug("Using NATIVE LIBRARY for packet encoding!");
                 
-                // Recreate video decoder if it was destroyed on disconnect
-                if (videoDecoder == null && surfaceHolder != null && surfaceHolder.getSurface() != null) {
-                    logDebug("Recreating video decoder for reconnection");
-                    logDebug("Surface valid: " + surfaceHolder.getSurface().isValid());
+                // Recreate video decoder for each connection (ensures clean state)
+                if (videoDecoder != null) {
+                    logDebug("Stopping existing video decoder before reconnection");
+                    videoDecoder.stop();
+                    videoDecoder = null;
+                }
+                
+                // Initialize native video library ONCE (not on every reconnect)
+                // Mode 1 for platform 4 (HS260 with A9-720P), Mode 0 for others
+                // Platform 4 uses MediaCodec H.264 decoding, not live555
+                if (!nativeVideoInitialized) {
+                    int initResult = SDLActivity.liveInit(1);
+                    logDebug("Native video library initialized with mode 1 (platform 4): " + initResult);
+                    nativeVideoInitialized = true;
+                } else {
+                    logDebug("Native video library already initialized, skipping liveInit");
+                }
+                
+                // Create and start video decoder BEFORE registering listener
+                // Wait for surface to be ready
+                if (!surfaceReady) {
+                    logDebug("Waiting for surface to be ready...");
+                    int waitCount = 0;
+                    while (!surfaceReady && waitCount < 50) {
+                        try { Thread.sleep(100); } catch (InterruptedException e) {}
+                        waitCount++;
+                    }
+                    if (!surfaceReady) {
+                        logDebug("ERROR: Surface not ready after 5 seconds!");
+                    }
+                }
+                
+                if (surfaceReady && surfaceHolder != null && surfaceHolder.getSurface() != null && surfaceHolder.getSurface().isValid()) {
+                    logDebug("Creating video decoder for connection");
+                    logDebug("Surface: " + surfaceHolder.getSurface() + ", valid=" + surfaceHolder.getSurface().isValid());
                     videoDecoder = new VideoDecoder(surfaceHolder.getSurface());
                     
                     // Set frame callback for MJPEG streaming
@@ -415,29 +432,26 @@ public class MainActivity extends AppCompatActivity {
                     
                     if (!videoDecoder.start()) {
                         logDebug("ERROR: Failed to start video decoder");
+                        videoDecoder = null;
                     } else {
-                        logDebug("Video decoder started successfully for reconnection");
+                        logDebug("Video decoder started successfully");
+                        // Force video view to be visible and request layout
+                        mainHandler.post(() -> {
+                            videoView.setVisibility(View.VISIBLE);
+                            videoView.bringToFront();
+                            videoView.requestLayout();
+                            videoView.invalidate();
+                            // Force surface to recreate by setting Z order
+                            videoView.setZOrderOnTop(false);
+                            logDebug("Video view refreshed and brought to front");
+                        });
+                        // Register listener ONLY after decoder is successfully started
+                        SDLActivity.setLiveListener(videoFrameListener);
+                        logDebug("Video frame listener registered");
                     }
                 } else {
-                    logDebug("Video decoder NOT recreated: decoder=" + videoDecoder + ", surfaceHolder=" + surfaceHolder + 
-                             ", surface=" + (surfaceHolder != null ? surfaceHolder.getSurface() : "null"));
-                }
-                
-                // Initialize native video library ONCE (not on every reconnect)
-                // Mode 1 for platform 4 (HS260 with A9-720P), Mode 0 for others
-                // Platform 4 uses MediaCodec H.264 decoding, not live555
-                if (!nativeVideoInitialized) {
-                    int initResult = SDLActivity.liveInit(1);
-                    logDebug("Native video library initialized with mode 1 (platform 4): " + initResult);
-                    nativeVideoInitialized = true;
-                } else {
-                    logDebug("Native video library already initialized, skipping liveInit");
-                }
-                
-                // Register video frame listener to receive decoded frames
-                SDLActivity.setLiveListener(videoFrameListener);
-                logDebug("Video frame listener registered");
-                
+                    logDebug("ERROR: Cannot create video decoder - invalid surface");
+                }                
                 mainHandler.post(this::updateUI);
                 
                 // CRITICAL: Establish TCP connection FIRST (drone requires this before video!)
@@ -960,10 +974,11 @@ public class MainActivity extends AppCompatActivity {
         SDLActivity.setLiveListener(null);
         logDebug("Native video listener unregistered");
         
-        // Stop video decoder
-        if (videoDecoder != null) {
-            videoDecoder.stop();
-            videoDecoder = null;
+        // Stop video decoder - set to null FIRST to prevent decode() calls during stop()
+        VideoDecoder decoderToStop = videoDecoder;
+        videoDecoder = null;  // Null it FIRST so callbacks won't try to use it
+        if (decoderToStop != null) {
+            decoderToStop.stop();
             logDebug("Video decoder stopped");
         }
         
