@@ -358,6 +358,14 @@
                     packetCount = 0;
                     totalBytes = 0;
                     frameCount = 0;
+                    
+                    // Show waiting message on canvas using same style as initial placeholder
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.fillStyle = '#fff';
+                    ctx.font = '24px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('Waiting for stream...', canvas.width / 2, canvas.height / 2);
                 };
                 
                 ws.onmessage = (event) => {
