@@ -508,6 +508,15 @@ public class MainActivity extends AppCompatActivity {
                         int length = receivePacket.getLength();
                         
                         if (length > 0) {
+                            // Log raw packet bytes every 20 packets to see what we're receiving
+                            if (packetCount % 20 == 0) {
+                                StringBuilder hex = new StringBuilder();
+                                for (int i = 0; i < Math.min(length, 40); i++) {
+                                    hex.append(String.format("%02X ", receiveBuffer[i]));
+                                }
+                                logDebug("RAW Telemetry [" + length + " bytes]: " + hex.toString());
+                            }
+                            
                             // Parse telemetry using native method
                             SDLActivity.nativeGetFlyReceiveData(lastTelemetry, receiveBuffer, length);
                             
@@ -517,8 +526,8 @@ public class MainActivity extends AppCompatActivity {
                             motorRunning = lastTelemetry.getMotorRunning() == 1;
                             altitudeHold = lastTelemetry.getAltHold() == 1;
                             
-                            // Debug log every 50 packets
-                            if (packetCount++ % 50 == 0) {
+                            // Debug log every 5 packets (more frequent for debugging)
+                            if (packetCount++ % 5 == 0) {
                                 logDebug("Telemetry: Battery=" + batteryLevel + 
                                        "%, Height=" + altitude + 
                                        ", Motors=" + (motorRunning ? "ON" : "OFF") +
