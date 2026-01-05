@@ -97,8 +97,10 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void b(byte[] frameData) {
             // MAIN VIDEO FRAME CALLBACK - receives H.264 encoded packets
-            // Ignore frames when not connected to drone
+            // This should not be called after disconnect (listener is unregistered)
+            // but check anyway as a safety measure
             if (!isConnected) {
+                logDebug("WARNING: Video callback still active after disconnect!");
                 return;
             }
             
@@ -939,6 +941,10 @@ public class MainActivity extends AppCompatActivity {
         isConnected = false;
         isFlying = false;
         tcpHandshakeComplete = false;
+        
+        // Unregister video listener FIRST to stop native callbacks
+        SDLActivity.setLiveListener(null);
+        logDebug("Native video listener unregistered");
         
         // Stop video decoder
         if (videoDecoder != null) {
