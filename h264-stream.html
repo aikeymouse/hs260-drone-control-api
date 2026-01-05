@@ -257,9 +257,9 @@
         }
         .telemetry-panel {
             position: absolute;
-            top: 50px;
-            right: 10px;
-            background: rgba(0, 0, 0, 0.8);
+            top: 45px;
+            right: 150px;
+            background: rgba(0, 0, 0, 0.9);
             backdrop-filter: blur(10px);
             border-radius: 8px;
             padding: 15px;
@@ -427,47 +427,6 @@
                 </div>
             </div>
             <div class="log" id="log"></div>
-        </div>
-    </div>
-
-    <script src="h264-stream.js"></script>
-    <script src="telemetry-ui.js"></script>
-</body>
-</html>
-            <div class="panel-header">
-                <h3>📊 Telemetry Recording</h3>
-                <button onclick="toggleTelemetryPanel()" style="background: rgba(255, 255, 255, 0.1); padding: 8px 16px;">✕ Close</button>
-            </div>
-            
-            <div class="controls">
-                <button id="telemetry-toggle" onclick="toggleTelemetryRecording()" 
-                        style="background: linear-gradient(135deg, #0f0 0%, #0c0 100%);">⏺️ Start Recording</button>
-                
-                <span id="telemetry-stats" style="display: none; color: #fff; font-weight: 600;">📊 0 packets</span>
-            </div>
-            
-            <div class="controls" style="margin-top: 15px;">
-                <button onclick="downloadTelemetry('json')" 
-                        style="background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);">📥 Download JSON</button>
-                
-                <button onclick="downloadTelemetry('csv')" 
-                        style="background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);">📥 Download CSV</button>
-                
-                <button onclick="downloadTelemetry('raw')" 
-                        style="background: linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%);">📥 Download Binary</button>
-                
-                <button onclick="clearTelemetry()" 
-                        style="background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);">🗑️ Clear Data</button>
-            </div>
-            
-            <div style="margin-top: 15px; padding: 10px; background: rgba(0, 0, 0, 0.2); border-radius: 6px; font-size: 0.85em; color: #aaa;">
-                <strong>How to use:</strong><br>
-                1. Connect to drone<br>
-                2. Click "Start Recording" before performing actions<br>
-                3. Perform takeoff, calibration, or other commands<br>
-                4. Click "Stop Recording"<br>
-                5. Download data for analysis (JSON for scripts, CSV for Excel)
-            </div>
         </div>
     </div>
 
