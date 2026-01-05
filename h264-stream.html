@@ -255,6 +255,37 @@
         input:checked + .toggle-slider:before {
             transform: translateX(20px);
         }
+        .telemetry-panel {
+            position: absolute;
+            top: 50px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            border-radius: 8px;
+            padding: 15px;
+            width: 320px;
+            display: none;
+            z-index: 100;
+        }
+        .telemetry-panel.open {
+            display: block;
+        }
+        #telemetry-stats {
+            display: inline-block;
+            padding: 12px 24px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            margin-left: 10px;
+        }
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .panel-header h3 {
+            margin: 0;
+        }
     </style>
 </head>
 <body>
@@ -317,11 +348,45 @@
                     <span class="telemetry-label">Status:</span>
                     <span class="telemetry-value" id="overlay-warnings">--</span>
                 </div>
+                <button onclick="toggleTelemetryPanel()" style="margin-left: auto; padding: 8px 16px; background: rgba(156, 39, 176, 0.5); backdrop-filter: blur(10px); border: 1px solid rgba(186, 104, 200, 0.5); border-radius: 6px; color: #fff; font-weight: 600; cursor: pointer; font-size: 12px; transition: all 0.3s;">📊 Telemetry</button>
             </div>
             <div class="commands-overlay">
                 <h3>COMMANDS</h3>
                 <button class="command-btn" onclick="sendCommand('calibrate')" data-tooltip="Calibrate Gyro">🧭</button>
                 <button class="command-btn" onclick="sendCommand('takeoff')" data-tooltip="Takeoff">🛫</button>
+            </div>
+            
+            <!-- Telemetry Recording Panel -->
+            <div class="telemetry-panel" id="telemetry-panel">
+                <div class="panel-header">
+                    <h3 style="font-size: 0.9em;">📊 Telemetry Recording</h3>
+                    <button onclick="toggleTelemetryPanel()" style="background: rgba(255, 255, 255, 0.1); padding: 6px 12px; font-size: 0.8em; border: none; border-radius: 4px; color: #fff; cursor: pointer;">✕</button>
+                </div>
+                
+                <div style="margin: 10px 0;">
+                    <button id="telemetry-toggle" onclick="toggleTelemetryRecording()" 
+                            style="width: 100%; padding: 10px; background: linear-gradient(135deg, #0f0 0%, #0c0 100%); border: none; border-radius: 6px; color: #fff; font-weight: 600; cursor: pointer; font-size: 0.9em;">⏺️ Start Recording</button>
+                    
+                    <span id="telemetry-stats" style="display: none; color: #fff; font-weight: 600; font-size: 0.85em; margin-top: 8px; text-align: center;">📊 0 packets</span>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px;">
+                    <button onclick="downloadTelemetry('json')" 
+                            style="padding: 8px; background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%); border: none; border-radius: 4px; color: #fff; cursor: pointer; font-size: 0.75em; font-weight: 600;">JSON</button>
+                    
+                    <button onclick="downloadTelemetry('csv')" 
+                            style="padding: 8px; background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%); border: none; border-radius: 4px; color: #fff; cursor: pointer; font-size: 0.75em; font-weight: 600;">CSV</button>
+                    
+                    <button onclick="downloadTelemetry('raw')" 
+                            style="padding: 8px; background: linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%); border: none; border-radius: 4px; color: #fff; cursor: pointer; font-size: 0.75em; font-weight: 600;">Binary</button>
+                    
+                    <button onclick="clearTelemetry()" 
+                            style="padding: 8px; background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%); border: none; border-radius: 4px; color: #fff; cursor: pointer; font-size: 0.75em; font-weight: 600;">Clear</button>
+                </div>
+                
+                <div style="margin-top: 12px; padding: 8px; background: rgba(0, 0, 0, 0.3); border-radius: 4px; font-size: 0.7em; color: #aaa; line-height: 1.4;">
+                    <strong>Usage:</strong> Start recording → Perform flight ops → Stop → Download
+                </div>
             </div>
         </div>
         
@@ -367,5 +432,47 @@
     </div>
 
     <script src="h264-stream.js"></script>
+    <script src="telemetry-ui.js"></script>
+</body>
+</html>
+            <div class="panel-header">
+                <h3>📊 Telemetry Recording</h3>
+                <button onclick="toggleTelemetryPanel()" style="background: rgba(255, 255, 255, 0.1); padding: 8px 16px;">✕ Close</button>
+            </div>
+            
+            <div class="controls">
+                <button id="telemetry-toggle" onclick="toggleTelemetryRecording()" 
+                        style="background: linear-gradient(135deg, #0f0 0%, #0c0 100%);">⏺️ Start Recording</button>
+                
+                <span id="telemetry-stats" style="display: none; color: #fff; font-weight: 600;">📊 0 packets</span>
+            </div>
+            
+            <div class="controls" style="margin-top: 15px;">
+                <button onclick="downloadTelemetry('json')" 
+                        style="background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);">📥 Download JSON</button>
+                
+                <button onclick="downloadTelemetry('csv')" 
+                        style="background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);">📥 Download CSV</button>
+                
+                <button onclick="downloadTelemetry('raw')" 
+                        style="background: linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%);">📥 Download Binary</button>
+                
+                <button onclick="clearTelemetry()" 
+                        style="background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);">🗑️ Clear Data</button>
+            </div>
+            
+            <div style="margin-top: 15px; padding: 10px; background: rgba(0, 0, 0, 0.2); border-radius: 6px; font-size: 0.85em; color: #aaa;">
+                <strong>How to use:</strong><br>
+                1. Connect to drone<br>
+                2. Click "Start Recording" before performing actions<br>
+                3. Perform takeoff, calibration, or other commands<br>
+                4. Click "Stop Recording"<br>
+                5. Download data for analysis (JSON for scripts, CSV for Excel)
+            </div>
+        </div>
+    </div>
+
+    <script src="h264-stream.js"></script>
+    <script src="telemetry-ui.js"></script>
 </body>
 </html>

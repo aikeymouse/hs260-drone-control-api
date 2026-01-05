@@ -51,6 +51,14 @@ public class DebugApiServer {
         void onMoveDown();    // Move down
         void onStopManual();  // Stop manual control
         void onCalibrate();   // Gyro calibration
+        // Telemetry collection
+        void onTelemetryStart();
+        void onTelemetryStop();
+        void onTelemetryClear();
+        String getTelemetryStats();
+        String getTelemetryJSON();
+        String getTelemetryCSV();
+        byte[] getTelemetryRaw();
     }
     
     public DebugApiServer(ApiCallback callback) {
@@ -244,6 +252,41 @@ public class DebugApiServer {
             sendJsonResponse(client, 200, "{\"result\":\"success\",\"message\":\"Calibration complete\"}", corsHeaders);
             client.close();
             
+        } else if (path.equals("/api/telemetry/start")) {
+            callback.onTelemetryStart();
+            sendJsonResponse(client, 200, "{\"result\":\"success\",\"message\":\"Telemetry recording started\"}", corsHeaders);
+            client.close();
+            
+        } else if (path.equals("/api/telemetry/stop")) {
+            callback.onTelemetryStop();
+            sendJsonResponse(client, 200, "{\"result\":\"success\",\"message\":\"Telemetry recording stopped\"}", corsHeaders);
+            client.close();
+            
+        } else if (path.equals("/api/telemetry/clear")) {
+            callback.onTelemetryClear();
+            sendJsonResponse(client, 200, "{\"result\":\"success\",\"message\":\"Telemetry data cleared\"}", corsHeaders);
+            client.close();
+            
+        } else if (path.equals("/api/telemetry/stats")) {
+            String stats = callback.getTelemetryStats();
+            sendJsonResponse(client, 200, stats, corsHeaders);
+            client.close();
+            
+        } else if (path.equals("/api/telemetry/download/json")) {
+            String data = callback.getTelemetryJSON();
+            sendDownloadResponse(client, data, "telemetry.json", "application/json", corsHeaders);
+            client.close();
+            
+        } else if (path.equals("/api/telemetry/download/csv")) {
+            String data = callback.getTelemetryCSV();
+            sendDownloadResponse(client, data, "telemetry.csv", "text/csv", corsHeaders);
+            client.close();
+            
+        } else if (path.equals("/api/telemetry/download/raw")) {
+            byte[] data = callback.getTelemetryRaw();
+            sendBinaryDownloadResponse(client, data, "telemetry.bin", "application/octet-stream", corsHeaders);
+            client.close();
+            
         } else if (path.equals("/api/video.mjpg")) {
             serveMjpegStream(client);
             // Don't close - streaming keeps connection open
@@ -284,6 +327,33 @@ public class DebugApiServer {
                          "\r\n";
         out.write(response.getBytes(StandardCharsets.UTF_8));
         out.write(body);
+        out.flush();
+    }
+    
+    private void sendDownloadResponse(Socket client, String data, String filename, String contentType, String extraHeaders) throws Exception {
+        OutputStream out = client.getOutputStream();
+        byte[] body = data.getBytes(StandardCharsets.UTF_8);
+        String response = "HTTP/1.1 200 OK\r\n" +
+                         extraHeaders +
+                         "Content-Type: " + contentType + "\r\n" +
+                         "Content-Disposition: attachment; filename=\"" + filename + "\"\r\n" +
+                         "Content-Length: " + body.length + "\r\n" +
+                         "\r\n";
+        out.write(response.getBytes(StandardCharsets.UTF_8));
+        out.write(body);
+        out.flush();
+    }
+    
+    private void sendBinaryDownloadResponse(Socket client, byte[] data, String filename, String contentType, String extraHeaders) throws Exception {
+        OutputStream out = client.getOutputStream();
+        String response = "HTTP/1.1 200 OK\r\n" +
+                         extraHeaders +
+                         "Content-Type: " + contentType + "\r\n" +
+                         "Content-Disposition: attachment; filename=\"" + filename + "\"\r\n" +
+                         "Content-Length: " + data.length + "\r\n" +
+                         "\r\n";
+        out.write(response.getBytes(StandardCharsets.UTF_8));
+        out.write(data);
         out.flush();
     }
     

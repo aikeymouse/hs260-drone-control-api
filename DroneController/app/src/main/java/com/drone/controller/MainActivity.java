@@ -75,6 +75,9 @@ public class MainActivity extends AppCompatActivity {
     // Debug API server for remote control via ADB
     private DebugApiServer apiServer;
     
+    // Telemetry collector for data recording
+    private TelemetryCollector telemetryCollector;
+    
     // Flight control using native library
     private FlySendInfo flySendInfo;
     private Object packetLock = new Object();
@@ -251,6 +254,9 @@ public class MainActivity extends AppCompatActivity {
 
         // Initialize FlySendInfo with neutral values
         initializeFlySendInfo();
+        
+        // Initialize telemetry collector
+        telemetryCollector = new TelemetryCollector();
         
         // Start debug API server for remote control via ADB
         startApiServer();
@@ -519,6 +525,11 @@ public class MainActivity extends AppCompatActivity {
                             
                             // Parse telemetry using native method
                             SDLActivity.nativeGetFlyReceiveData(lastTelemetry, receiveBuffer, length);
+                            
+                            // Collect telemetry data if recording
+                            if (telemetryCollector.isRecording()) {
+                                telemetryCollector.addPacket(receiveBuffer, length, lastTelemetry);
+                            }
                             
                             // Extract key values
                             batteryLevel = lastTelemetry.getBatVal();
@@ -1163,6 +1174,50 @@ public class MainActivity extends AppCompatActivity {
                     // Note: HS260 does not provide telemetry feedback for calibration status.
                     // The drone will flash its lights during calibration (~2 seconds).
                 });
+            }
+            
+            @Override
+            public void onTelemetryStart() {
+                mainHandler.post(() -> {
+                    telemetryCollector.startCollection();
+                    logDebug("Telemetry recording started");
+                });
+            }
+            
+            @Override
+            public void onTelemetryStop() {
+                mainHandler.post(() -> {
+                    telemetryCollector.stopCollection();
+                    logDebug("Telemetry recording stopped");
+                });
+            }
+            
+            @Override
+            public void onTelemetryClear() {
+                mainHandler.post(() -> {
+                    telemetryCollector.clear();
+                    logDebug("Telemetry data cleared");
+                });
+            }
+            
+            @Override
+            public String getTelemetryStats() {
+                return telemetryCollector.getStats();
+            }
+            
+            @Override
+            public String getTelemetryJSON() {
+                return telemetryCollector.exportJSON();
+            }
+            
+            @Override
+            public String getTelemetryCSV() {
+                return telemetryCollector.exportCSV();
+            }
+            
+            @Override
+            public byte[] getTelemetryRaw() {
+                return telemetryCollector.exportRaw();
             }
         });
         apiServer.start();
