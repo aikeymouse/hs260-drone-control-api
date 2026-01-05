@@ -1,0 +1,21 @@
+# Computer Vision & SLAM
+opencv-contrib-python>=4.8.0  # Includes ORB, SIFT, feature matching
+numpy>=1.24.0
+
+# Video Streaming
+websockets>=12.0              # WebSocket client for video stream (asyncio)
+websocket-client>=1.6.0       # WebSocket client (sync, for simple viewer)
+av>=11.0.0                    # PyAV for H.264 decoding
+
+# HTTP API & Control
+requests>=2.31.0              # HTTP API for drone control
+
+# Graph Optimization (for full SLAM with loop closure)
+# g2o-python>=0.0.1           # Uncomment when implementing optimization
+
+# 3D Visualization
+# pangolin>=0.8.0             # Uncomment for 3D map visualization
+# or use: pip install open3d  # Alternative for 3D visualization
+
+# Math & Optimization
+scipy>=1.11.0                 # Matrix operations, optimization
