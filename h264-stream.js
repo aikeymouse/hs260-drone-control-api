@@ -411,11 +411,28 @@ function clearLog() {
 
 async function sendCommand(command) {
     try {
+        // Special handling for takeoff: calibrate first
+        if (command === 'takeoff') {
+            log('📤 Takeoff sequence: Step 1 - Calibrating gyro...', 'info');
+            
+            // Send calibration command and wait for it to complete
+            const calibrateResponse = await fetch('http://localhost:9000/api/calibrate', {
+                method: 'POST'
+            });
+            const calibrateResult = await calibrateResponse.json();
+            log(`✅ Calibration complete: ${calibrateResult.message}`, 'info');
+            
+            // Small delay before takeoff
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            log('📤 Takeoff sequence: Step 2 - Taking off...', 'info');
+        }
+        
         const response = await fetch(`http://localhost:9000/api/${command}`, {
             method: 'POST'
         });
         const result = await response.json();
-        log(`📤 Command: ${command} - ${result.status}`, result.status === 'success' ? 'info' : 'error');
+        log(`📤 Command: ${command} - ${result.status || 'success'}`, result.status === 'success' ? 'info' : 'error');
         
         // Update drone status immediately after command
         setTimeout(updateDroneStatus, 500);
