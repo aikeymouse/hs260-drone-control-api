@@ -22,6 +22,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from vision.visual_odometry import VisualOdometry
+from vision.obstacle_detector_fast import FastObstacleDetector
 
 
 class VisionProcessor:
@@ -44,6 +45,9 @@ class VisionProcessor:
         
         # Visual odometry
         self.vo = VisualOdometry(focal_length=800, pp=(640, 360))
+        
+        # Fast obstacle detector
+        self.obstacle_detector = FastObstacleDetector(grid_size=(4, 3))
         
     def _parse_nal_units(self, data):
         """Parse length-prefixed NAL units from WebSocket message."""
@@ -102,65 +106,36 @@ class VisionProcessor:
     
     def _process_frame(self, frame):
         """Apply OpenCV processing to frame."""
-        # Run visual odometry
-        vo_result = self.vo.process_frame(frame)
+        # Run obstacle detection only (faster)
+        obstacle_result = self.obstacle_detector.analyze_frame(frame)
         
-        # Draw feature keypoints
-        output = cv2.drawKeypoints(frame, vo_result['keypoints'], None, 
-                                   color=(0, 255, 0), 
-                                   flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+        # Draw obstacle overlay
+        output = self.obstacle_detector.draw_overlay(frame, obstacle_result)
         
-        # Draw motion vectors (feature matches)
-        if vo_result.get('num_matches', 0) > 0:
-            output = self.vo.draw_matches(output, vo_result)
-        
-        # Draw trajectory
-        output = self.vo.draw_trajectory(output, scale=20, offset=(150, 600))
-        
-        # Overlay stats
-        fps_text = f"FPS: {self.fps:.1f} | Features: {vo_result['num_features']}"
+        # Overlay FPS
+        fps_text = f"FPS: {self.fps:.1f}"
         cv2.putText(output, fps_text, (10, 30), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
         
-        # VO stats
-        if vo_result.get('num_matches'):
-            matches_text = f"Matches: {vo_result['num_matches']}"
-            cv2.putText(output, matches_text, (10, 60),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+        # Flight recommendation
+        recommendation = self.obstacle_detector.get_flight_recommendation(obstacle_result)
+        rec_colors = {'OK': (0, 255, 0), 'STOP': (0, 0, 255), 
+                     'LEFT': (255, 255, 0), 'RIGHT': (255, 255, 0),
+                     'UP': (255, 255, 0), 'DOWN': (255, 255, 0)}
+        rec_color = rec_colors.get(recommendation, (255, 255, 255))
+        cv2.putText(output, f"Command: {recommendation}", (10, 60),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, rec_color, 2)
         
-        if vo_result.get('motion'):
-            motion = vo_result['motion']
-            inliers_text = f"Inliers: {motion['inliers']}"
-            cv2.putText(output, inliers_text, (10, 90),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
-            
-            # Motion magnitudes (for debugging)
-            if 't_mag' in motion:
-                mag_text = f"T:{motion['t_mag']:.3f} R:{motion['r_mag']:.3f}"
-                cv2.putText(output, mag_text, (10, 120),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 100), 1)
-            
-            # Motion status
-            if motion.get('moving', False):
-                status_text = "Status: MOVING"
-                status_color = (0, 255, 255)  # Yellow
-            else:
-                status_text = "Status: STATIONARY"
-                status_color = (128, 128, 128)  # Gray
-            cv2.putText(output, status_text, (10, 150),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, status_color, 2)
-        
-        # Position
-        pos = vo_result['position']
-        pos_text = f"Pos: ({pos[0]:.2f}, {pos[1]:.2f}, {pos[2]:.2f})"
-        cv2.putText(output, pos_text, (10, 180),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+        # Flow magnitude
+        cv2.putText(output, f"Flow: {obstacle_result['flow_magnitude']:.2f}", (10, 90),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
         
         # Frame counter
-        cv2.putText(output, f"Frame: {self.total_frames}", (10, 210),
+        cv2.putText(output, f"Frame: {self.total_frames}", (10, 120),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
         
         return output
+    
     def _on_message(self, ws, message):
         """WebSocket message handler."""
         self.message_count += 1
@@ -347,14 +322,16 @@ class MJPEGStreamHandler(BaseHTTPRequestHandler):
         
         <div class="info">
             <p><strong>Status:</strong> <span style="color: #0f0;">● LIVE</span></p>
-            <p><strong>Processing:</strong> Visual Odometry + ORB Feature Tracking</p>
+            <p><strong>Processing:</strong> Obstacle Detection + Visual Odometry</p>
             <p><strong>Stream:</strong> MJPEG @ ~30 FPS</p>
             <p><strong>Features:</strong></p>
             <ul style="margin: 5px 0; padding-left: 20px;">
-                <li>Green circles = ORB keypoints (1000 features)</li>
-                <li>Yellow arrows = Feature motion vectors</li>
-                <li>Green path (bottom-left) = Estimated trajectory</li>
-                <li>Yellow dot = Current position</li>
+                <li><strong style="color: #f00;">Red zones</strong> = Approaching obstacles (DANGER)</li>
+                <li><strong style="color: #ffa500;">Orange zones</strong> = Obstacles detected (CAUTION)</li>
+                <li><strong style="color: #0f0;">Green arrows</strong> = Safe flight directions</li>
+                <li><strong style="color: #f00;">Red arrows</strong> = Blocked directions</li>
+                <li>Green circles = ORB features (tracking)</li>
+                <li>Command = Recommended flight action</li>
             </ul>
         </div>
     </div>
