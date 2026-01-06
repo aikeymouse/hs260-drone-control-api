@@ -4,10 +4,16 @@ Fast Sparse Optical Flow Obstacle Detection for HS260 Drone.
 
 Uses Lucas-Kanade sparse optical flow for real-time performance.
 Much faster than dense Farneback method.
+
+Enhanced with:
+- Flow balancing (bee-inspired navigation)
+- Simple expansion-based collision detection
 """
 
 import cv2
 import numpy as np
+import time
+from .navigation.flow_balancer import FlowBalancer
 
 
 class FastObstacleDetector:
@@ -23,6 +29,7 @@ class FastObstacleDetector:
         self.grid_size = grid_size
         self.prev_gray = None
         self.prev_points = None
+        self.last_time = time.time()
         
         # Lucas-Kanade parameters (much faster than Farneback)
         self.lk_params = dict(
@@ -44,6 +51,9 @@ class FastObstacleDetector:
         self.ttc_warning = 2.0
         self.ttc_danger = 1.0
         
+        # Flow balancing for navigation
+        self.flow_balancer = FlowBalancer(balance_threshold=0.3, speed_target=5.0)
+        
     def analyze_frame(self, frame):
         """
         Analyze frame for obstacles using sparse optical flow.
@@ -52,10 +62,12 @@ class FastObstacleDetector:
             frame: BGR image
             
         Returns:
-            dict with: zones, safe_directions, warnings, flow_magnitude, points
+            dict with: zones, safe_directions, warnings, flow_magnitude, points, foe, heading
         """
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         h, w = gray.shape
+        current_time = time.time()
+        dt = current_time - self.last_time
         
         result = {
             'zones': [],
@@ -63,7 +75,9 @@ class FastObstacleDetector:
             'warnings': [],
             'danger_level': 0,
             'flow_magnitude': 0.0,
-            'points': []
+            'points': [],
+            'balance': None,
+            'dt': dt
         }
         
         if self.prev_gray is None:
@@ -94,8 +108,14 @@ class FastObstacleDetector:
                     # Store points for visualization
                     result['points'] = [(new, old) for new, old in zip(good_new, good_old)]
                     
+                    # Create magnitude map for flow balancing
+                    mag_map = self._create_magnitude_map(good_new, magnitudes, w, h)
+                    
+                    # Compute flow balance (bee navigation)
+                    result['balance'] = self.flow_balancer.compute_balance(mag_map)
+                    
                     # Analyze grid zones with sparse flow
-                    result['zones'] = self._analyze_zones_sparse(good_new, good_old, flow_vectors, w, h)
+                    result['zones'] = self._analyze_zones_sparse(good_new, good_old, flow_vectors, w, h, dt)
                     
                     # Update safe directions
                     self._update_safe_directions(result)
@@ -112,10 +132,36 @@ class FastObstacleDetector:
         
         # Update for next frame
         self.prev_gray = gray
+        self.last_time = current_time
         
         return result
     
-    def _analyze_zones_sparse(self, new_points, old_points, flow_vectors, width, height):
+    def _create_magnitude_map(self, points, magnitudes, width, height):
+        """
+        Create a simple magnitude map from sparse flow points.
+        Much faster than interpolated flow field.
+        """
+        mag_map = np.zeros((height, width), dtype=np.float32)
+        
+        if len(points) < 3:
+            return mag_map
+        
+        # Simple binning approach - faster than interpolation
+        bin_size = 40  # pixels
+        
+        for y in range(0, height, bin_size):
+            for x in range(0, width, bin_size):
+                # Find points in this bin
+                in_bin = ((points[:, 0] >= x) & (points[:, 0] < x + bin_size) &
+                         (points[:, 1] >= y) & (points[:, 1] < y + bin_size))
+                
+                if np.any(in_bin):
+                    mean_mag = np.mean(magnitudes[in_bin])
+                    mag_map[y:y+bin_size, x:x+bin_size] = mean_mag
+        
+        return mag_map
+    
+    def _analyze_zones_sparse(self, new_points, old_points, flow_vectors, width, height, dt):
         """Analyze zones using sparse flow vectors."""
         cols, rows = self.grid_size
         zone_width = width / cols
@@ -170,9 +216,8 @@ class FastObstacleDetector:
                     
                     zone_data['expansion'] = expansion
                     
-                    # Estimate time to collision
+                    # Simple TTC estimation
                     if expansion > 0.5:
-                        # Rough TTC estimate
                         avg_distance = float(np.mean(distances))
                         ttc = avg_distance / (expansion * 30)  # 30 fps assumption
                         zone_data['ttc'] = ttc
@@ -298,13 +343,71 @@ class FastObstacleDetector:
                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
                 y_offset += 25
         
+        # Draw flow balance visualization (bee navigation)
+        if result.get('balance') is not None:
+            balance = result['balance']
+            h, w = frame.shape[:2]
+            
+            # Draw lateral balance indicator
+            lateral = balance['lateral_balance']
+            bar_width = 200
+            bar_height = 20
+            bar_x = w//2 - bar_width//2
+            bar_y = h - 60
+            
+            # Background bar
+            cv2.rectangle(output, (bar_x, bar_y), (bar_x + bar_width, bar_y + bar_height),
+                         (100, 100, 100), -1)
+            
+            # Center line
+            cv2.line(output, (w//2, bar_y), (w//2, bar_y + bar_height),
+                    (255, 255, 255), 2)
+            
+            # Balance indicator
+            indicator_x = int(w//2 + lateral * bar_width//2)
+            indicator_color = (0, 255, 0) if abs(lateral) < 0.3 else (0, 165, 255)
+            cv2.circle(output, (indicator_x, bar_y + bar_height//2), 8, indicator_color, -1)
+            
+            # Labels
+            cv2.putText(output, "L", (bar_x - 15, bar_y + 15),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            cv2.putText(output, "R", (bar_x + bar_width + 5, bar_y + 15),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            
+            # Show recommendation
+            rec = balance['recommendations']
+            action_text = f"Nav: {rec['action']}"
+            cv2.putText(output, action_text, (10, h - 80),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+            
+            # Show balance value
+            balance_text = f"Balance: {lateral:.2f}"
+            cv2.putText(output, balance_text, (10, h - 50),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        
         return output
     
     def get_flight_recommendation(self, result):
-        """Get flight command recommendation."""
+        """Get flight command recommendation based on obstacles and balance."""
+        # Check for immediate danger
         if result['danger_level'] >= 3:
             return 'STOP'
         
+        # Use balance recommendations if available
+        if result.get('balance') is not None:
+            action = result['balance']['recommendations']['action']
+            
+            # Map balance actions to flight commands
+            if action == 'ADJUST_LEFT':
+                return 'LEFT'
+            elif action == 'ADJUST_RIGHT':
+                return 'RIGHT'
+            elif action == 'SLOW_DOWN':
+                return 'SLOW'
+            elif 'STOP' in action:
+                return 'STOP'
+        
+        # Fallback to zone-based logic
         safe = result['safe_directions']
         
         if not safe.get('forward', True):
