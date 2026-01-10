@@ -23,6 +23,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from vision.visual_odometry import VisualOdometry
 from vision.obstacle_detector_fast import FastObstacleDetector
+from autopilot import AutopilotController
 
 
 class VisionProcessor:
@@ -48,6 +49,18 @@ class VisionProcessor:
         
         # Fast obstacle detector
         self.obstacle_detector = FastObstacleDetector(grid_size=(4, 3))
+        
+        # Latest obstacle detection result (for autopilot)
+        self.latest_obstacle_result = None
+        self.result_lock = threading.Lock()
+        
+        # Autopilot controller (disabled by default)
+        self.autopilot = AutopilotController(
+            api_url="http://localhost:9000",  # Android app API port
+            confirmation_mode=True,  # Require manual confirmation
+            command_history_size=5
+        )
+        self.autopilot_enabled = False
         
     def _parse_nal_units(self, data):
         """Parse length-prefixed NAL units from WebSocket message."""
@@ -108,6 +121,10 @@ class VisionProcessor:
         """Apply OpenCV processing to frame."""
         # Run obstacle detection only (faster)
         obstacle_result = self.obstacle_detector.analyze_frame(frame)
+        
+        # Store latest result for autopilot
+        with self.result_lock:
+            self.latest_obstacle_result = obstacle_result
         
         # Draw obstacle overlay
         output = self.obstacle_detector.draw_overlay(frame, obstacle_result)
@@ -218,6 +235,49 @@ class VisionProcessor:
     def get_latest_frame(self):
         """Get latest processed frame."""
         return self.processed_frame
+    
+    def get_obstacle_result(self):
+        """Get latest obstacle detection result."""
+        with self.result_lock:
+            return self.latest_obstacle_result
+    
+    def enable_autopilot(self):
+        """Enable autopilot navigation."""
+        if not self.autopilot_enabled:
+            self.autopilot.enable()
+            self.autopilot_enabled = True
+            print("\n✓ AUTOPILOT ENABLED")
+            print("  Confirmation mode: ON")
+            print("  Press 's' to execute single step")
+            print("  Press 'd' to disable\n")
+    
+    def disable_autopilot(self):
+        """Disable autopilot navigation."""
+        if self.autopilot_enabled:
+            self.autopilot.disable()
+            self.autopilot_enabled = False
+            print("\n✓ AUTOPILOT DISABLED\n")
+    
+    def autopilot_step(self):
+        """Execute single autopilot step with confirmation."""
+        if not self.autopilot_enabled:
+            print("⚠ Autopilot not enabled. Press 'e' to enable.")
+            return
+        
+        result = self.get_obstacle_result()
+        if result is None:
+            print("⚠ No vision data available yet")
+            return
+        
+        # Compute control from vision
+        control_cmd = self.autopilot.compute_control(result)
+        
+        # Execute with confirmation
+        success = self.autopilot.execute_control(control_cmd)
+        
+        if not success and self.autopilot.emergency_stop:
+            print("\n🛑 EMERGENCY STOP TRIGGERED - Disabling autopilot")
+            self.disable_autopilot()
 
 
 class MJPEGStreamHandler(BaseHTTPRequestHandler):
@@ -371,20 +431,60 @@ def main():
     
     print("✓ Receiving and processing frames\n")
     
-    # Start MJPEG HTTP server
+    # Start MJPEG HTTP server in separate thread
     MJPEGStreamHandler.processor = processor
     server = HTTPServer(('localhost', 8080), MJPEGStreamHandler)
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
     
     print("=== MJPEG Server Started ===")
     print("  URL: http://localhost:8080")
     print("  Stream: http://localhost:8080/stream")
     print("\nOpen http://localhost:8080 in your browser to view processed video")
-    print("Press Ctrl+C to stop\n")
+    
+    print("\n=== AUTOPILOT CONTROLS ===")
+    print("  [e] Enable autopilot")
+    print("  [s] Execute single step (when enabled)")
+    print("  [d] Disable autopilot")
+    print("  [q] Quit server")
+    print("\nPress Ctrl+C to stop\n")
     
     try:
-        server.serve_forever()
+        import select
+        import tty
+        import termios
+        
+        # Save terminal settings
+        old_settings = termios.tcgetattr(sys.stdin)
+        
+        try:
+            tty.setcbreak(sys.stdin.fileno())
+            
+            while True:
+                # Check for keyboard input (non-blocking)
+                if select.select([sys.stdin], [], [], 0.1)[0]:
+                    key = sys.stdin.read(1).lower()
+                    
+                    if key == 'e':
+                        processor.enable_autopilot()
+                    elif key == 'd':
+                        processor.disable_autopilot()
+                    elif key == 's':
+                        processor.autopilot_step()
+                    elif key == 'q':
+                        print("\n\nQuitting...")
+                        break
+                
+                time.sleep(0.01)
+        
+        finally:
+            # Restore terminal settings
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+    
     except KeyboardInterrupt:
         print("\n\nShutting down...")
+    finally:
+        processor.disable_autopilot()
         server.shutdown()
 
 
